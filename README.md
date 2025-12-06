@@ -18,6 +18,6 @@ The tool has th following capabilities:
 5. If rg body exists it can st your mass from there.
 6. Make wheel colliders, assign them radius from measurements(unreliable, you might need o mke sure they are correct size and placed correctly.
 
-The tool is limeted when i comes to:
+The tool is limeted when it comes to:
 1. Measuring
 2. Correctly placing Wheel Colliders
