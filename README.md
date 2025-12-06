@@ -7,8 +7,8 @@ i.) VehicleConfigs,folder to Assets
 5. Go through the warnings from unity as thy might tell you that som fies ae missing, yt they aren't.
 6. Your car MUST be a prefab in th Assets\ foler, this dos not work with Scen Objects.
 
-It is highly recommendd yu go through both VehicleEditorWindow.cs and ModularVhicleEditorWindow.cs, thy both do he sam thing with the first one having 673 lines and the second having 441 lines. Idk what I was thinking when 
-witing the two bcz I forgot to merge it into one script.
+It is highly recommendd yu go through both VehicleEditorWindow.cs and ModularVhicleEditorWindow.cs, thy both do he sam thing with the first one having 673 lines and the second having 441 lines. Idk what I was thinking when witing the two bcz I forgot to merge it into one script.
+Do note that the first choic has more fatures than the second.
 
 The tool has th following capabilities:
 1. Keeps track of vehicles u have ditd before.
