@@ -11,7 +11,7 @@ It is highly recommendd yu go through both VehicleEditorWindow.cs and ModularVhi
 Do note that the first choic has more fatures than the second.
 
 The tool has th following capabilities:
-1. Keeps track of vehicles u have ditd before.
+1. Keeps track of vehicles you have ditd before.
 2. Measure your vehicle for you, with limiations.
 3. Auto separate parts.
 4. Auo create a rigid body for your car if one dos not exist.
@@ -21,3 +21,6 @@ The tool has th following capabilities:
 The tool is limeted when it comes to:
 1. Measuring
 2. Correctly placing Wheel Colliders
+
+Known issues with import or cloning from Github:
+1. Th too might not wok, IDK why. There is no critical error with it, it just won't work if you cloe with git bash.
