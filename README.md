@@ -39,7 +39,5 @@ The tool has th following capabilities:
 The tool is limeted when it comes to:
 1. Measuring
 2. Correctly placing Wheel Colliders
-3. h added moules do not work yet so don't worry.
+3. The added moules do not work yet so don't worry.
 
-Known issues with import or cloning from Github:
-1. Th too might not wok, IDK why. There is no critical error with it, it just won't work if you cloe with git bash.
