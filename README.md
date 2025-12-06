@@ -1,4 +1,4 @@
-Remeber in orfer to use the tool:
+Remeber in order to use the tool:
 1. You must emove the suffix -Unity.
 2. It must be in Editor undr a folder named "UVS"
 3. The tool is located Under tools*Note it has both VehicleEdiorWindow and ModularVehicleEditorWindow as sprat ven hough they are one tool.*
