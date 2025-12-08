@@ -40,7 +40,7 @@ namespace UVS.Editor.Core
 
     public class ValidationResult
     {
-        private List<ValidationMessage> messages = new List<ValidationMessage>();
+        private readonly List<ValidationMessage> messages = new();
 
         public bool IsValid
         {

@@ -1,12 +1,11 @@
 // AxleTab.cs
 using UnityEngine.UIElements;
-using UVS.Modules;
 
 public class AxleTab : ITabModule
 {
     public string TabName => "Axle";
 
-    private EditorConsole console;
+    private readonly EditorConsole console;
 
     public AxleTab(EditorConsole c)
     {

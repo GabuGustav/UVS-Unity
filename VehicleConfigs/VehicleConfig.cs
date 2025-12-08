@@ -9,9 +9,10 @@ public class VehicleConfig : ScriptableObject
     public GameObject prefabReference;
     public string id;
     public string vehicleName;
+    public string authorname;
 
     // Dynamic properties storage for specialized modules
-    private Dictionary<string, object> _dynamicProperties = new Dictionary<string, object>();
+    private readonly Dictionary<string, object> _dynamicProperties = new();
 
     #region Helper Methods for Modules
 
@@ -152,6 +153,42 @@ public class VehicleConfig : ScriptableObject
 
     public enum VehicleType { Land, Air, Water, Space, Fictional }
 
+    public enum SpecializedLandVehicleType
+    {
+        Construction,Tank
+    }
+
+    public enum SpecializedAirVehicleType
+    {
+        VTOL, Drone, Glider
+    }
+
+    public enum LandVehicleCategory
+    {
+        Sedan, SUV, Truck, Motorcycle, SportsCar,
+        OffRoad, Bus, Van, Coupe, Convertible,
+        Hatchback, Wagon, Electric,
+        Standard,Classic, Specialized
+    }
+
+    public enum AirVehicleCategory
+    {
+        Airplane, Helicopter, Glider,
+        Standard, Specialized
+    }
+
+    public enum WaterVehicleCategory
+    {
+        Boat, Ship, Submarine, JetSki, Sailboat,
+        Standard,
+    }
+
+    public enum SpaceVehicleCategory
+    {
+        Shuttle, Rover, Satellite, SpaceStation, Fighter,
+        Standard, Spaceship
+    }
+
     // General vehicle measurements
     [Serializable]
     public class VehicleMeasurements
@@ -166,7 +203,7 @@ public class VehicleConfig : ScriptableObject
         public float groundClearance;
         public Vector3 centerOfMassEstimate;
     }
-    public VehicleMeasurements measurements = new VehicleMeasurements();
+    public VehicleMeasurements measurements = new();
 
     // Per-wheel settings
     [Serializable]
@@ -181,7 +218,7 @@ public class VehicleConfig : ScriptableObject
         public bool isPowered;
         public bool isSteering;
     }
-    public List<WheelSettings> wheels = new List<WheelSettings>();
+    public List<WheelSettings> wheels = new();
 
     // Engine
     [Serializable]
@@ -213,7 +250,7 @@ public class VehicleConfig : ScriptableObject
             AWD, FWD, RWD
         }
     }
-    public EngineSettings engine = new EngineSettings();
+    public EngineSettings engine = new();
 
     // Turbo System
     [Serializable]
@@ -230,7 +267,7 @@ public class VehicleConfig : ScriptableObject
         public AudioClip whistleClip;
         public AudioClip blowoffClip;
     }
-    public TurboSettings turbo = new TurboSettings();
+    public TurboSettings turbo = new();
 
     // Brakes
     [Serializable]
@@ -241,7 +278,7 @@ public class VehicleConfig : ScriptableObject
         public bool abs = true;
         public float brakeBias = 0.6f;
     }
-    public BrakeSettings brakes = new BrakeSettings();
+    public BrakeSettings brakes = new();
 
     // Suspension
     [Serializable]
@@ -253,7 +290,7 @@ public class VehicleConfig : ScriptableObject
         public float suspensionTravel = 0.2f;
         public float suspensionDistance = 0.3f;
     }
-    public SuspensionSettings suspension = new SuspensionSettings();
+    public SuspensionSettings suspension = new();
 
     // Body
     [Serializable]
@@ -264,7 +301,7 @@ public class VehicleConfig : ScriptableObject
         public float frontalArea = 2.5f;
         public Vector3 centerOfMassOffset = Vector3.zero;
     }
-    public BodySettings body = new BodySettings();
+    public BodySettings body = new();
 
     // Transmission
     [Serializable]
@@ -282,7 +319,7 @@ public class VehicleConfig : ScriptableObject
             Manual, Automatic, Sequential, CVT
         }
     }
-    public TransmissionSettings transmission = new TransmissionSettings();
+    public TransmissionSettings transmission = new();
 
     // Fuel System
     [Serializable]
@@ -314,7 +351,7 @@ public class VehicleConfig : ScriptableObject
             Biofuel
         }
     }
-    public FuelSystemSettings fuelSystem = new FuelSystemSettings();
+    public FuelSystemSettings fuelSystem = new();
 
     // Steering
     [Serializable]
@@ -325,7 +362,7 @@ public class VehicleConfig : ScriptableObject
         public bool powerSteering = true;
         public float steeringAssist = 0.5f;
     }
-    public SteeringSettings steering = new SteeringSettings();
+    public SteeringSettings steering = new();
 
     // Electronics
     [Serializable]
@@ -337,7 +374,7 @@ public class VehicleConfig : ScriptableObject
         public bool hasLaunchControl = false;
         public bool hasCruiseControl = true;
     }
-    public ElectronicsSettings electronics = new ElectronicsSettings();
+    public ElectronicsSettings electronics = new();
 
     // Performance Profiles
     [Serializable]
@@ -350,7 +387,7 @@ public class VehicleConfig : ScriptableObject
         public bool enableAllAssists = true;
     }
 
-    public List<PerformanceProfile> performanceProfiles = new List<PerformanceProfile>()
+    public List<PerformanceProfile> performanceProfiles = new()
     {
         new PerformanceProfile { profileName = "Comfort", torqueMultiplier = 0.8f, suspensionStiffnessMultiplier = 0.7f, steeringResponsiveness = 0.8f },
         new PerformanceProfile { profileName = "Sports", torqueMultiplier = 1.0f, suspensionStiffnessMultiplier = 1.0f, steeringResponsiveness = 1.0f },
@@ -373,7 +410,7 @@ public class VehicleConfig : ScriptableObject
         public AudioClip collisionClip;
         public AudioClip gearGrindClip;
     }
-    public AudioMixSettings audioMix = new AudioMixSettings();
+    public AudioMixSettings audioMix = new();
 
     [Serializable]
     public class AmmoTypeData
@@ -382,7 +419,7 @@ public class VehicleConfig : ScriptableObject
         public float damage;
         public float speed;
     }
-    public List<AmmoTypeData> ammoTypes = new List<AmmoTypeData>();
+    public List<AmmoTypeData> ammoTypes = new();
 
     // Damage System
     [Serializable]
@@ -394,7 +431,7 @@ public class VehicleConfig : ScriptableObject
         public float damageMultiplier = 1f;
         public bool visualDamage = true;
     }
-    public DamageSettings damage = new DamageSettings();
+    public DamageSettings damage = new ();
 
     // Public property for VehicleID compatibility
     public string VehicleID => id;

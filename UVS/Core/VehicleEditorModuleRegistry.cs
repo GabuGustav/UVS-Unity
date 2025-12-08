@@ -1,8 +1,6 @@
-using UnityEngine.UIElements;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using UnityEngine;
 using UVS.Editor.Modules.Specialized;
 
@@ -13,8 +11,8 @@ namespace UVS.Editor.Core
     /// </summary>
     public class VehicleEditorModuleRegistry
     {
-        private readonly Dictionary<string, IVehicleEditorModule> _modules = new Dictionary<string, IVehicleEditorModule>();
-        private readonly List<IVehicleEditorModule> _sortedModules = new List<IVehicleEditorModule>();
+        private readonly Dictionary<string, IVehicleEditorModule> _modules = new();
+        private readonly List<IVehicleEditorModule> _sortedModules = new();
         private bool _isInitialized = false;
         
         public IReadOnlyList<IVehicleEditorModule> Modules => _sortedModules.AsReadOnly();
@@ -44,7 +42,7 @@ namespace UVS.Editor.Core
                 
             if (_modules.ContainsKey(module.ModuleId))
             {
-                UnityEngine.Debug.LogWarning($"Module with ID '{module.ModuleId}' is already registered. Replacing existing module.");
+                Debug.LogWarning($"Module with ID '{module.ModuleId}' is already registered. Replacing existing module.");
             }
             
             _modules[module.ModuleId] = module;
@@ -113,7 +111,7 @@ namespace UVS.Editor.Core
                 }
                 catch (Exception ex)
                 {
-                    UnityEngine.Debug.LogError($"Failed to initialize module '{module.ModuleId}': {ex.Message}");
+                   Debug.LogError($"Failed to initialize module '{module.ModuleId}': {ex.Message}");
                 }
             }
         }
@@ -131,7 +129,7 @@ namespace UVS.Editor.Core
                 }
                 catch (Exception ex)
                 {
-                    UnityEngine.Debug.LogError($"Failed to cleanup module '{module.ModuleId}': {ex.Message}");
+                   Debug.LogError($"Failed to cleanup module '{module.ModuleId}': {ex.Message}");
                 }
             }
         }
@@ -151,15 +149,14 @@ namespace UVS.Editor.Core
             {
                 try
                 {
-                    var module = Activator.CreateInstance(type) as IVehicleEditorModule;
-                    if (module != null)
+                    if (Activator.CreateInstance(type) is IVehicleEditorModule module)
                     {
                         RegisterModule(module);
                     }
                 }
                 catch (Exception ex)
                 {
-                    UnityEngine.Debug.LogError($"Failed to create instance of module type '{type.Name}': {ex.Message}");
+                    Debug.LogError($"Failed to create instance of module type '{type.Name}': {ex.Message}");
                 }
             }
 

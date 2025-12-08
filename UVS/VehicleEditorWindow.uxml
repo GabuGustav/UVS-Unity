@@ -65,6 +65,8 @@
 
             <ui:TextField    name="VehicleName"       label="Vehicle Name" />
             <ui:EnumField    name="VehicleTypeField"  label="Vehicle Type" />
+            <ui:EnumField	name="CategoryField"     label="Category" />
+            <ui:EnumField    name="SpecializedField"  label="Specialized" />
             <ui:TextField    name="ManufacturerField" label="Manufacturer" />
             <ui:IntegerField name="YearField"         label="Year" />
             <ui:TextField    name="SeedField"         label="ID Seed (3 chars)" max-length="3" />

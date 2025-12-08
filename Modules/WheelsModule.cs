@@ -43,7 +43,7 @@ namespace UVS.Editor.Modules
         {
             if (string.IsNullOrEmpty(path)) return path;
             int lastSlash = path.LastIndexOf('/');
-            return lastSlash >= 0 ? path.Substring(lastSlash + 1) : path;
+            return lastSlash >= 0 ? path[(lastSlash + 1)..] : path;
         }
         
         private Transform FindChildByPath(Transform root, string path)
@@ -215,9 +215,11 @@ namespace UVS.Editor.Modules
             nameLabel.style.width = 120;
             nameLabel.style.color = Color.white;
             row.Add(nameLabel);
-            
-            var radiusField = new FloatField("Radius");
-            radiusField.value = wheelSetting.radius;
+
+            var radiusField = new FloatField("Radius")
+            {
+                value = wheelSetting.radius
+            };
             radiusField.style.width = 80;
             radiusField.RegisterValueChangedCallback(evt => 
             {
@@ -225,9 +227,11 @@ namespace UVS.Editor.Modules
                 EditorUtility.SetDirty(_context.CurrentConfig);
             });
             row.Add(radiusField);
-            
-            var widthField = new FloatField("Width");
-            widthField.value = wheelSetting.width;
+
+            var widthField = new FloatField("Width")
+            {
+                value = wheelSetting.width
+            };
             widthField.style.width = 80;
             widthField.RegisterValueChangedCallback(evt => 
             {
@@ -235,9 +239,11 @@ namespace UVS.Editor.Modules
                 EditorUtility.SetDirty(_context.CurrentConfig);
             });
             row.Add(widthField);
-            
-            var suspensionField = new FloatField("Suspension");
-            suspensionField.value = wheelSetting.SuspensionDistance;
+
+            var suspensionField = new FloatField("Suspension")
+            {
+                value = wheelSetting.SuspensionDistance
+            };
             suspensionField.style.width = 100;
             suspensionField.RegisterValueChangedCallback(evt => 
             {
@@ -245,18 +251,22 @@ namespace UVS.Editor.Modules
                 EditorUtility.SetDirty(_context.CurrentConfig);
             });
             row.Add(suspensionField);
-            
-            var steeringToggle = new Toggle("Steering");
-            steeringToggle.value = wheelSetting.isSteering;
+
+            var steeringToggle = new Toggle("Steering")
+            {
+                value = wheelSetting.isSteering
+            };
             steeringToggle.RegisterValueChangedCallback(evt => 
             {
                 wheelSetting.isSteering = evt.newValue;
                 EditorUtility.SetDirty(_context.CurrentConfig);
             });
             row.Add(steeringToggle);
-            
-            var poweredToggle = new Toggle("Powered");
-            poweredToggle.value = wheelSetting.isPowered;
+
+            var poweredToggle = new Toggle("Powered")
+            {
+                value = wheelSetting.isPowered
+            };
             poweredToggle.RegisterValueChangedCallback(evt => 
             {
                 wheelSetting.isPowered = evt.newValue;
@@ -286,8 +296,7 @@ namespace UVS.Editor.Modules
             
             try
             {
-                var rb = prefabRoot.GetComponent<Rigidbody>();
-                if (rb == null)
+                if (!prefabRoot.TryGetComponent<Rigidbody>(out var rb))
                 {
                     rb = prefabRoot.AddComponent<Rigidbody>();
                     LogMessage("Added Rigidbody to vehicle");
@@ -299,22 +308,24 @@ namespace UVS.Editor.Modules
                 rb.interpolation = RigidbodyInterpolation.Interpolate;
                 rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
                 rb.centerOfMass = _context.CurrentConfig.measurements.centerOfMassEstimate;
-                
+
+                Transform existingWCParent = prefabRoot.transform.Find("WheelColliders");
+                if (existingWCParent != null)
+                {
+                    Object.DestroyImmediate(existingWCParent.gameObject);
+                }
+
                 Transform wheelCollidersParent = new GameObject("WheelColliders").transform;
                 wheelCollidersParent.SetParent(prefabRoot.transform);
-                wheelCollidersParent.localPosition = Vector3.zero;
-                wheelCollidersParent.localRotation = Quaternion.identity;
-                
+                wheelCollidersParent.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
                 foreach (var wheelSetting in _context.CurrentConfig.wheels)
                 {
                     Transform wheelTransform = FindChildByPath(prefabRoot.transform, wheelSetting.partPath);
                     if (wheelTransform == null) continue;
                     
-                    GameObject colliderObj = new GameObject($"{wheelTransform.name}_collider");
-                    colliderObj.transform.SetParent(wheelCollidersParent);
-                    colliderObj.transform.position = wheelTransform.position;
-                    colliderObj.transform.rotation = wheelTransform.rotation;
-                    
+                    GameObject colliderObj = new($"{wheelTransform.name}_collider");
+                    colliderObj.transform.SetParent(wheelCollidersParent, false);
+                    colliderObj.transform.SetLocalPositionAndRotation(wheelTransform.localPosition, wheelTransform.localRotation);
                     var wheelCollider = colliderObj.AddComponent<WheelCollider>();
                     wheelCollider.radius = wheelSetting.radius;
                     wheelCollider.suspensionDistance = wheelSetting.SuspensionDistance;

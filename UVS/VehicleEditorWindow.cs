@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UVS.Editor.Core;
-using UVS.Modules;
 
 namespace UVS.Editor
 {
@@ -28,8 +27,8 @@ namespace UVS.Editor
 
         // State
         private IVehicleEditorModule _activeModule;
-        private Dictionary<string, VisualElement> _moduleUI = new Dictionary<string, VisualElement>();
-        private Dictionary<string, Button> _tabButtons = new Dictionary<string, Button>();
+        private readonly Dictionary<string, VisualElement> _moduleUI = new();
+        private readonly Dictionary<string, Button> _tabButtons = new();
 
         // Preview controls state
         private bool _showWheelGizmos = true;
@@ -97,8 +96,8 @@ namespace UVS.Editor
                 else
                 {
                     _context.Registry = ScriptableObject.CreateInstance<VehicleIDRegistry>();
-                    Directory.CreateDirectory("Assets/VehicleSystem/Data");
-                    AssetDatabase.CreateAsset(_context.Registry, "Assets/VehicleSystem/Data/VehicleIDRegistry.asset");
+                    Directory.CreateDirectory("Assets/Editor/UVSVehicleSystem/Data");
+                    AssetDatabase.CreateAsset(_context.Registry, "Assets/Editor/UVSVehicleSystem/Data/VehicleIDRegistry.asset");
                     AssetDatabase.SaveAssets();
                 }
 
@@ -239,7 +238,7 @@ namespace UVS.Editor
         {
             if (_previewContainer == null) return;
 
-            Rect controlsRect = new Rect(_previewContainer.contentRect.x + 10,
+            Rect controlsRect = new(_previewContainer.contentRect.x + 10,
                                        _previewContainer.contentRect.y + 10,
                                        200, 120);
 
@@ -320,8 +319,10 @@ namespace UVS.Editor
 
             header.Add(leftSection);
 
-            var statusLabel = new Label("Ready");
-            statusLabel.name = "statusLabel";
+            var statusLabel = new Label("Ready")
+            {
+                name = "statusLabel"
+            };
             statusLabel.style.color = Color.green;
             header.Add(statusLabel);
 
@@ -349,9 +350,9 @@ namespace UVS.Editor
 
                         var tabButton = new Button(() => ActivateModule(module.ModuleId))
                         {
-                            text = module.DisplayName
+                            text = module.DisplayName,
+                            name = $"{module.ModuleId}Tab"
                         };
-                        tabButton.name = $"{module.ModuleId}Tab";
                         tabButton.AddToClassList("tab-button");
 
                         bool canActivate = !module.RequiresVehicle || HasValidVehicle();
@@ -385,10 +386,7 @@ namespace UVS.Editor
 
         private void ActivateModule(string moduleId)
         {
-            if (_activeModule != null)
-            {
-                _activeModule.OnDeactivate();
-            }
+            _activeModule?.OnDeactivate();
 
             var module = _moduleRegistry?.GetModule<IVehicleEditorModule>(moduleId);
             if (module == null)
@@ -556,7 +554,7 @@ namespace UVS.Editor
 
                 // Create new vehicle configuration
                 var newConfig = ScriptableObject.CreateInstance<VehicleConfig>();
-                newConfig.id = $"Vehicle_{System.Guid.NewGuid().ToString().Substring(0, 8)}"; // Now this will work
+                newConfig.id = $"Vehicle_{System.Guid.NewGuid().ToString()[..8]}"; // Now this will work
                 newConfig.vehicleName = "New Vehicle";
                 newConfig.prefabGuid = string.Empty;
 
@@ -614,7 +612,7 @@ namespace UVS.Editor
                     // Convert to project-relative path
                     if (path.StartsWith(Application.dataPath))
                     {
-                        path = "Assets" + path.Substring(Application.dataPath.Length);
+                        path = "Assets" + path[Application.dataPath.Length..];
                     }
 
                     var config = AssetDatabase.LoadAssetAtPath<VehicleConfig>(path);

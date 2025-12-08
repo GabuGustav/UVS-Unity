@@ -1,31 +1,34 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 
 namespace UVS.Editor.Core
 {
     /// <summary>
-    /// Enhanced 3D Preview system with interactive gizmos for vehicle editor
+    /// Enhanced 3D Preview system with interactive gizmos for vehicle editor — URP-ready
     /// </summary>
     public class VehiclePreview3D
     {
         private GameObject _currentVehicle;
+        private GameObject _previewInstance; // Clone for full URP rendering
+
         private PreviewRenderUtility _previewUtility;
-        private Vector2 _cameraRotation = new Vector2(0, 0);
+
+        private Vector2 _cameraRotation = new(0, 0);
         private float _cameraDistance = 5f;
         private Vector3 _cameraPivot = Vector3.zero;
-        
+
         // Gizmo states
         private bool _wheelsGizmo = true;
         private bool _collidersGizmo = true;
         private bool _suspensionGizmo = true;
-        
+
         // Interactive gizmo data
-        private Dictionary<string, GizmoHandle> _gizmoHandles = new Dictionary<string, GizmoHandle>();
+        private readonly Dictionary<string, GizmoHandle> _gizmoHandles = new();
         private GizmoHandle _selectedGizmo;
         private bool _isDraggingGizmo = false;
 
-        // Default material for preview
+        // Default fallback material
         private Material _defaultMaterial;
 
         public class GizmoHandle
@@ -56,99 +59,123 @@ namespace UVS.Editor.Core
         {
             _previewUtility = new PreviewRenderUtility();
             _previewUtility.camera.fieldOfView = 30f;
-            _previewUtility.camera.nearClipPlane = 0.1f;
+            _previewUtility.camera.nearClipPlane = 0.01f;
             _previewUtility.camera.farClipPlane = 1000f;
-            
-            // Create default material
-            _defaultMaterial = new Material(Shader.Find("Standard"));
-            _defaultMaterial.color = Color.gray;
-            
-            // Add lights to the preview
-            _previewUtility.lights[0].intensity = 1f;
-            _previewUtility.lights[0].transform.rotation = Quaternion.Euler(50f, 30f, 0f);
-            
+
+            // Smart fallback material (URP/HDRP/Built-in safe)
+            Shader fallback =
+                Shader.Find("Universal Render Pipeline/Unlit") ??
+                Shader.Find("HDRP/Unlit") ??
+                Shader.Find("Hidden/Internal-Colored");
+
+            _defaultMaterial = new Material(fallback) { hideFlags = HideFlags.HideAndDontSave };
+
+            if (fallback != null && (fallback.name.Contains("Unlit") || fallback.name.Contains("Universal")))
+                _defaultMaterial.SetColor("_BaseColor", new Color(0.75f, 0.75f, 0.75f));
+            else if (fallback != null)
+                _defaultMaterial.SetColor("_Color", new Color(0.75f, 0.75f, 0.75f));
+
+            // Enhanced lighting
+            _previewUtility.ambientColor = new Color(0.25f, 0.25f, 0.3f);
+            _previewUtility.lights[0].intensity = 1.6f;
+            _previewUtility.lights[0].transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+
             if (_previewUtility.lights.Length > 1)
             {
-                _previewUtility.lights[1].intensity = 0.5f;
-                _previewUtility.lights[1].transform.rotation = Quaternion.Euler(30f, -30f, 0f);
+                _previewUtility.lights[1].intensity = 1.0f;
+                _previewUtility.lights[1].transform.rotation = Quaternion.Euler(-40f, 140f, 0f);
             }
         }
 
         public void SetVehicle(GameObject vehicle)
         {
+            // Destroy old preview instance
+            if (_previewInstance != null)
+            {
+                _previewUtility?.Cleanup();
+                Object.DestroyImmediate(_previewInstance);
+                _previewInstance = null;
+            }
+
             _currentVehicle = vehicle;
+
             if (vehicle != null)
             {
-                // Calculate bounds for camera positioning
-                Bounds bounds = CalculateBounds(vehicle);
+                // Clone the vehicle for preview
+                _previewInstance = Object.Instantiate(vehicle);
+                _previewInstance.hideFlags = HideFlags.HideAndDontSave;
+                _previewInstance.transform.position = Vector3.zero;
+
+                // Add clone to preview utility (persists until Cleanup)
+                _previewUtility.AddSingleGO(_previewInstance);
+
+                Bounds bounds = CalculateBounds(_previewInstance);
+
                 _cameraPivot = bounds.center;
-                _cameraDistance = bounds.size.magnitude * 1.5f;
-                
-                // Create gizmo handles for wheels and other components
+                _cameraDistance = Mathf.Max(bounds.size.magnitude * 1.5f, 3f);
+
                 CreateGizmoHandles();
             }
         }
 
-        private Bounds CalculateBounds(GameObject gameObject)
+        private Bounds CalculateBounds(GameObject go)
         {
-            Renderer[] renderers = gameObject.GetComponentsInChildren<Renderer>();
-            if (renderers.Length == 0) return new Bounds(gameObject.transform.position, Vector3.one);
+            Renderer[] renderers = go.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0)
+                return new Bounds(go.transform.position, Vector3.one * 2f);
 
-            Bounds bounds = renderers[0].bounds;
+            Bounds b = renderers[0].bounds;
             for (int i = 1; i < renderers.Length; i++)
-            {
-                bounds.Encapsulate(renderers[i].bounds);
-            }
-            return bounds;
+                b.Encapsulate(renderers[i].bounds);
+
+            return b;
         }
 
         private void CreateGizmoHandles()
         {
             _gizmoHandles.Clear();
-            
             if (_currentVehicle == null) return;
 
-            // Find all wheel colliders and create gizmos for them
-            WheelCollider[] wheelColliders = _currentVehicle.GetComponentsInChildren<WheelCollider>();
-            foreach (WheelCollider wheel in wheelColliders)
+            // Wheels
+            WheelCollider[] wheels = _currentVehicle.GetComponentsInChildren<WheelCollider>();
+            foreach (WheelCollider w in wheels)
             {
-                var handle = new GizmoHandle
+                var h = new GizmoHandle
                 {
-                    id = $"wheel_{wheel.name}",
-                    position = wheel.transform.position,
+                    id = $"wheel_{w.name}",
+                    position = w.transform.TransformPoint(w.center),
                     type = GizmoType.Wheel,
                     color = Color.yellow,
-                    size = 0.2f,
-                    onPositionChanged = (newPos) => 
+                    size = 0.25f,
+                    onPositionChanged = (newPos) =>
                     {
-                        Vector3 offset = newPos - wheel.transform.position;
-                        wheel.transform.position = newPos;
-                        // You might want to update the vehicle configuration here
+                        Vector3 local = w.transform.InverseTransformPoint(newPos);
+                        w.center = local;
                     }
                 };
-                _gizmoHandles.Add(handle.id, handle);
+                _gizmoHandles.Add(h.id, h);
             }
 
-            // Find all colliders and create gizmos for them
+            // Other colliders
             Collider[] colliders = _currentVehicle.GetComponentsInChildren<Collider>();
-            foreach (Collider collider in colliders)
+            foreach (Collider c in colliders)
             {
-                if (collider is WheelCollider) continue; // Skip wheel colliders as we already handled them
-                
-                var handle = new GizmoHandle
+                if (c is WheelCollider) continue;
+
+                var h = new GizmoHandle
                 {
-                    id = $"collider_{collider.name}",
-                    position = collider.bounds.center,
+                    id = $"col_{c.name}",
+                    position = c.bounds.center,
                     type = GizmoType.Collider,
-                    color = Color.blue,
-                    size = 0.15f,
-                    onPositionChanged = (newPos) => 
+                    color = Color.cyan,
+                    size = 0.2f,
+                    onPositionChanged = (newPos) =>
                     {
-                        Vector3 offset = newPos - collider.bounds.center;
-                        collider.transform.position += offset;
+                        Vector3 offset = newPos - c.bounds.center;
+                        c.transform.position += offset;
                     }
                 };
-                _gizmoHandles.Add(handle.id, handle);
+                _gizmoHandles.Add(h.id, h);
             }
         }
 
@@ -156,233 +183,261 @@ namespace UVS.Editor.Core
         {
             switch (gizmoType.ToLower())
             {
-                case "wheels":
-                    _wheelsGizmo = state;
-                    break;
-                case "colliders":
-                    _collidersGizmo = state;
-                    break;
-                case "suspension":
-                    _suspensionGizmo = state;
-                    break;
+                case "wheels": _wheelsGizmo = state; break;
+                case "colliders": _collidersGizmo = state; break;
+                case "suspension": _suspensionGizmo = state; break;
             }
         }
 
         public void RenderPreview(Rect previewRect)
         {
-            if (_previewUtility == null || previewRect.width <= 0 || previewRect.height <= 0) 
+            if (_previewUtility == null || previewRect.width <= 0 || previewRect.height <= 0)
                 return;
 
-            // Handle camera controls
             HandleCameraControls(previewRect);
 
-            // Setup camera
-            Quaternion rotation = Quaternion.Euler(_cameraRotation.y, _cameraRotation.x, 0);
-            Vector3 position = _cameraPivot - rotation * Vector3.forward * _cameraDistance;
-            
-            _previewUtility.camera.transform.position = position;
-            _previewUtility.camera.transform.rotation = rotation;
+            Quaternion rot = Quaternion.Euler(_cameraRotation.y, _cameraRotation.x, 0);
+            Vector3 pos = _cameraPivot - rot * Vector3.forward * _cameraDistance;
 
-            // Begin preview
+            _previewUtility.camera.transform.SetPositionAndRotation(pos, rot);
+
+            // FIXED: Simple loop - Begin/Render/End (added GO renders automatically)
             _previewUtility.BeginPreview(previewRect, GUIStyle.none);
-            
-            if (_currentVehicle != null)
+            _previewUtility.Render();
+
+            if (_previewInstance == null)
             {
-                // Draw the vehicle
-                DrawVehicleRecursive(_currentVehicle.transform);
-            }
-            else
-            {
-                // Draw placeholder grid
                 DrawGrid();
             }
 
-            _previewUtility.Render();
-            
-            // Get the preview texture and draw it
-            Texture previewTexture = _previewUtility.EndPreview();
-            if (previewTexture != null)
-            {
-                GUI.DrawTexture(previewRect, previewTexture, ScaleMode.StretchToFill, false);
-            }
-            
-            // Draw gizmos using Handles (2D overlay)
+            Texture tex = _previewUtility.EndPreview();
+            if (tex != null)
+                GUI.DrawTexture(previewRect, tex, ScaleMode.StretchToFill, false);
+
             if (_currentVehicle != null)
             {
                 DrawGizmosOverlay(previewRect);
-            }
-            
-            // Draw gizmo handles on top
-            DrawGizmoHandles(previewRect);
-        }
-
-        private void HandleCameraControls(Rect previewRect)
-        {
-            Event e = Event.current;
-            int controlID = GUIUtility.GetControlID(FocusType.Passive);
-
-            if (!previewRect.Contains(e.mousePosition) || _isDraggingGizmo)
-                return;
-
-            switch (e.type)
-            {
-                case EventType.MouseDrag:
-                    if (e.button == 0) // Left click - rotate
-                    {
-                        _cameraRotation.x += e.delta.x * 0.5f;
-                        _cameraRotation.y -= e.delta.y * 0.5f;
-                        _cameraRotation.y = Mathf.Clamp(_cameraRotation.y, -90f, 90f);
-                        e.Use();
-                    }
-                    else if (e.button == 1) // Right click - pan
-                    {
-                        Vector3 right = _previewUtility.camera.transform.right * -e.delta.x * 0.01f * _cameraDistance;
-                        Vector3 up = _previewUtility.camera.transform.up * e.delta.y * 0.01f * _cameraDistance;
-                        _cameraPivot += right + up;
-                        e.Use();
-                    }
-                    break;
-
-                case EventType.ScrollWheel:
-                    _cameraDistance += e.delta.y * 0.1f * _cameraDistance;
-                    _cameraDistance = Mathf.Clamp(_cameraDistance, 1f, 50f);
-                    e.Use();
-                    break;
+                DrawGizmoHandles(previewRect);
             }
         }
 
         private void DrawVehicleRecursive(Transform transform)
         {
+            if (transform == null) return;
+
             foreach (Transform child in transform)
             {
-                // Draw mesh if it has a renderer
-                MeshFilter meshFilter = child.GetComponent<MeshFilter>();
-                Renderer renderer = child.GetComponent<Renderer>();
-                
-                if (meshFilter != null && meshFilter.sharedMesh != null && renderer != null)
+                MeshFilter mf = child.GetComponent<MeshFilter>();
+                Renderer r = child.GetComponent<Renderer>();
+
+                if (mf != null ? mf.sharedMesh : null != null && r != null)
                 {
-                    Material[] materials = renderer.sharedMaterials;
-                    for (int i = 0; i < materials.Length; i++)
+                    Material[] mats = r.sharedMaterials;
+
+                    for (int i = 0; i < mats.Length; i++)
                     {
-                        Material material = materials[i] != null ? materials[i] : _defaultMaterial;
-                        
+                        Material mat = mats[i];
+
+                        if (mat == null || !mat.shader.isSupported)
+                            mat = _defaultMaterial;
+
                         _previewUtility.DrawMesh(
-                            meshFilter.sharedMesh,
+                            mf.sharedMesh,
                             child.localToWorldMatrix,
-                            material,
+                            mat,
                             i
                         );
                     }
                 }
-                
+
                 DrawVehicleRecursive(child);
+            }
+        }
+
+        private void HandleCameraControls(Rect r)
+        {
+            Event e = Event.current;
+            if (!r.Contains(e.mousePosition) || _isDraggingGizmo)
+                return;
+
+            if (e.type == EventType.MouseDrag)
+            {
+                if (e.button == 0)
+                {
+                    _cameraRotation.x += e.delta.x * 0.5f;
+                    _cameraRotation.y -= e.delta.y * 0.5f;
+                    _cameraRotation.y = Mathf.Clamp(_cameraRotation.y, -89f, 89f);
+                    e.Use();
+                }
+                else if (e.button == 1)
+                {
+                    _cameraPivot += (_cameraDistance * 0.01f) *
+                        (-e.delta.x * _previewUtility.camera.transform.right +
+                          e.delta.y * _previewUtility.camera.transform.up);
+
+                    e.Use();
+                }
+            }
+            else if (e.type == EventType.ScrollWheel)
+            {
+                _cameraDistance = Mathf.Clamp(
+                    _cameraDistance + e.delta.y * 0.1f * _cameraDistance,
+                    0.5f,
+                    100f
+                );
+                e.Use();
             }
         }
 
         private void DrawGizmosOverlay(Rect previewRect)
         {
-            // Save the current Handles matrix
-            Matrix4x4 originalMatrix = Handles.matrix;
-            Color originalColor = Handles.color;
+            Matrix4x4 oldMatrix = Handles.matrix;
+            Color oldColor = Handles.color;
+
+            Handles.matrix = Matrix4x4.identity;
 
             try
             {
-                // Set up Handles for the preview camera
-                Handles.matrix = Matrix4x4.identity;
-                
-                // Draw wheel gizmos
                 if (_wheelsGizmo)
                 {
-                    WheelCollider[] wheels = _currentVehicle.GetComponentsInChildren<WheelCollider>();
-                    foreach (WheelCollider wheel in wheels)
-                    {
-                        DrawWheelGizmo(wheel);
-                    }
+                    foreach (WheelCollider w in _currentVehicle.GetComponentsInChildren<WheelCollider>())
+                        DrawWheelGizmo(w);
                 }
 
-                // Draw collider gizmos
                 if (_collidersGizmo)
                 {
-                    Collider[] colliders = _currentVehicle.GetComponentsInChildren<Collider>();
-                    foreach (Collider collider in colliders)
-                    {
-                        DrawColliderGizmo(collider);
-                    }
+                    foreach (Collider c in _currentVehicle.GetComponentsInChildren<Collider>())
+                        if (c is not WheelCollider)
+                            DrawColliderGizmo(c);
                 }
             }
             finally
             {
-                // Restore original Handles state
-                Handles.matrix = originalMatrix;
-                Handles.color = originalColor;
+                Handles.matrix = oldMatrix;
+                Handles.color = oldColor;
             }
         }
 
         private void DrawWheelGizmo(WheelCollider wheel)
         {
-            Vector3 position = wheel.transform.TransformPoint(wheel.center);
-            float radius = wheel.radius;
-            
-            // Draw wheel circle
+            Vector3 pos = wheel.transform.TransformPoint(wheel.center);
+            float rad = wheel.radius;
+
             Handles.color = Color.yellow;
-            Handles.DrawWireDisc(position, wheel.transform.up, radius);
-            
-            // Draw suspension
-            Handles.color = Color.green;
-            Vector3 springStart = position;
-            Vector3 springEnd = springStart - wheel.transform.up * wheel.suspensionDistance;
-            Handles.DrawLine(springStart, springEnd);
+            Handles.DrawWireDisc(pos, wheel.transform.up, rad);
+            Handles.DrawLine(
+                pos + wheel.transform.forward * rad,
+                pos - wheel.transform.forward * rad
+            );
+
+            Handles.color = Color.red;
+            DrawWireSphere(pos, 0.06f);
+
+            if (_suspensionGizmo)
+            {
+                Handles.color = Color.green;
+
+                Vector3 top = wheel.transform.position;
+                Vector3 bottom = top - wheel.transform.up * wheel.suspensionDistance;
+
+                DrawSpring(top, bottom, 7, 0.08f, 0.08f, 0.5f, 10);
+            }
         }
 
-        private void DrawColliderGizmo(Collider collider)
+        private void DrawWireSphere(Vector3 center, float radius)
         {
-            Handles.color = Color.blue;
-            
-            if (collider is BoxCollider boxCollider)
+            Handles.DrawWireDisc(center, Vector3.right, radius);
+            Handles.DrawWireDisc(center, Vector3.up, radius);
+            Handles.DrawWireDisc(center, Vector3.forward, radius);
+        }
+
+        private void DrawSpring(
+            Vector3 p1,
+            Vector3 p2,
+            int coils,
+            float startRadius,
+            float endRadius,
+            float radiusScale,
+            int resolutionPerCoil,
+            float phaseOffsetDeg = 0f
+        )
+        {
+            if (p1 == p2 || coils <= 0) return;
+
+            Quaternion rot = Quaternion.LookRotation(p2 - p1);
+            Vector3 right = rot * Vector3.right;
+            Vector3 up = rot * Vector3.up;
+
+            Vector3 prev = p1;
+            int segments = coils * resolutionPerCoil;
+            float offsetRad = phaseOffsetDeg * Mathf.Deg2Rad;
+
+            for (int i = 1; i <= segments; i++)
             {
-                Vector3 center = collider.transform.TransformPoint(boxCollider.center);
-                Vector3 size = Vector3.Scale(boxCollider.size, collider.transform.lossyScale);
-                DrawWireCube(center, size, collider.transform.rotation);
+                float t = i / (float)segments;
+                float rad = Mathf.Lerp(startRadius, endRadius, t);
+                float angle = t * coils * Mathf.PI * 2f + offsetRad;
+
+                Vector3 offset = rad * radiusScale *
+                    (up * Mathf.Sin(angle) + right * Mathf.Cos(angle));
+
+                Vector3 point = Vector3.Lerp(p1, p2, t) + offset;
+
+                Handles.DrawLine(prev, point);
+                prev = point;
             }
-            else if (collider is SphereCollider sphereCollider)
+        }
+
+        private void DrawColliderGizmo(Collider c)
+        {
+            Handles.color = new Color(0f, 0.8f, 1f, 0.8f);
+
+            if (c is BoxCollider box)
             {
-                Vector3 center = collider.transform.TransformPoint(sphereCollider.center);
-                float radius = sphereCollider.radius * Mathf.Max(
-                    collider.transform.lossyScale.x,
-                    collider.transform.lossyScale.y,
-                    collider.transform.lossyScale.z
-                );
-                Handles.DrawWireDisc(center, Vector3.up, radius);
-                Handles.DrawWireDisc(center, Vector3.right, radius);
-                Handles.DrawWireDisc(center, Vector3.forward, radius);
+                Vector3 center = c.transform.TransformPoint(box.center);
+                Vector3 size = Vector3.Scale(box.size, c.transform.lossyScale);
+
+                DrawWireCube(center, size, c.transform.rotation);
             }
-            else if (collider is CapsuleCollider capsuleCollider)
+            else if (c is SphereCollider sphere)
             {
-                Vector3 center = collider.transform.TransformPoint(capsuleCollider.center);
-                float radius = capsuleCollider.radius;
-                
-                // Simplified capsule drawing
-                Handles.DrawWireDisc(center, Vector3.up, radius);
+                Vector3 center = c.transform.TransformPoint(sphere.center);
+                float rad = sphere.radius *
+                    Mathf.Max(
+                        c.transform.lossyScale.x,
+                        c.transform.lossyScale.y,
+                        c.transform.lossyScale.z
+                    );
+
+                Handles.DrawWireDisc(center, Vector3.up, rad);
+                Handles.DrawWireDisc(center, Vector3.right, rad);
+                Handles.DrawWireDisc(center, Vector3.forward, rad);
+            }
+            else if (c is CapsuleCollider capsule)
+            {
+                Vector3 center = c.transform.TransformPoint(capsule.center);
+                float rad = capsule.radius;
+
+                Handles.DrawWireDisc(center, Vector3.up, rad);
             }
         }
 
         private void DrawWireCube(Vector3 center, Vector3 size, Quaternion rotation)
         {
-            Vector3 halfSize = size * 0.5f;
-            
+            Vector3 half = size * 0.5f;
+
             Vector3[] points = new Vector3[8]
             {
-                center + rotation * new Vector3(-halfSize.x, -halfSize.y, -halfSize.z),
-                center + rotation * new Vector3(-halfSize.x, -halfSize.y, halfSize.z),
-                center + rotation * new Vector3(-halfSize.x, halfSize.y, -halfSize.z),
-                center + rotation * new Vector3(-halfSize.x, halfSize.y, halfSize.z),
-                center + rotation * new Vector3(halfSize.x, -halfSize.y, -halfSize.z),
-                center + rotation * new Vector3(halfSize.x, -halfSize.y, halfSize.z),
-                center + rotation * new Vector3(halfSize.x, halfSize.y, -halfSize.z),
-                center + rotation * new Vector3(halfSize.x, halfSize.y, halfSize.z)
+                center + rotation * new Vector3(-half.x, -half.y, -half.z),
+                center + rotation * new Vector3(-half.x, -half.y, half.z),
+                center + rotation * new Vector3(-half.x, half.y, -half.z),
+                center + rotation * new Vector3(-half.x, half.y, half.z),
+                center + rotation * new Vector3(half.x, -half.y, -half.z),
+                center + rotation * new Vector3(half.x, -half.y, half.z),
+                center + rotation * new Vector3(half.x, half.y, -half.z),
+                center + rotation * new Vector3(half.x, half.y, half.z)
             };
 
-            // Draw the 12 edges of the cube
             Handles.DrawLine(points[0], points[1]);
             Handles.DrawLine(points[0], points[2]);
             Handles.DrawLine(points[0], points[4]);
@@ -399,16 +454,17 @@ namespace UVS.Editor.Core
 
         private void DrawGrid()
         {
-            // Draw a simple grid using lines
             Handles.color = new Color(0.5f, 0.5f, 0.5f, 0.3f);
-            float gridSize = 10f;
-            int divisions = 20;
-            
-            for (int i = -divisions; i <= divisions; i++)
+
+            float size = 10f;
+            int div = 20;
+
+            for (int i = -div; i <= div; i++)
             {
-                float pos = i * (gridSize / divisions);
-                Handles.DrawLine(new Vector3(-gridSize, 0, pos), new Vector3(gridSize, 0, pos));
-                Handles.DrawLine(new Vector3(pos, 0, -gridSize), new Vector3(pos, 0, gridSize));
+                float p = i * size / div;
+
+                Handles.DrawLine(new Vector3(-size, 0, p), new Vector3(size, 0, p));
+                Handles.DrawLine(new Vector3(p, 0, -size), new Vector3(p, 0, size));
             }
         }
 
@@ -416,119 +472,137 @@ namespace UVS.Editor.Core
         {
             if (_currentVehicle == null) return;
 
-            // Set up Handles for 2D overlay
-            Matrix4x4 originalMatrix = Handles.matrix;
+            Matrix4x4 old = Handles.matrix;
             Handles.matrix = Matrix4x4.identity;
 
             try
             {
                 foreach (var kvp in _gizmoHandles)
                 {
-                    GizmoHandle handle = kvp.Value;
-                    
-                    // Skip if this type is disabled
-                    if (!IsGizmoTypeEnabled(handle.type))
-                        continue;
+                    GizmoHandle h = kvp.Value;
+                    if (!IsGizmoTypeEnabled(h.type)) continue;
 
-                    // Convert world position to screen position
-                    Vector3 screenPos = _previewUtility.camera.WorldToScreenPoint(handle.position);
-                    screenPos.y = previewRect.height - screenPos.y; // Flip Y coordinate
+                    Vector3 screen = _previewUtility.camera.WorldToScreenPoint(h.position);
+                    if (screen.z <= 0) continue;
 
-                    // Only draw if handle is in front of camera
-                    if (screenPos.z > 0)
-                    {
-                        Rect handleRect = new Rect(
-                            screenPos.x - 10 + previewRect.x,
-                            screenPos.y - 10 + previewRect.y,
-                            20, 20
-                        );
+                    screen.y = previewRect.height - screen.y;
 
-                        // Draw handle as a 2D rectangle
-                        EditorGUI.DrawRect(handleRect, handle.color);
-                        
-                        // Handle mouse interaction
-                        HandleGizmoInteraction(handle, handleRect, previewRect);
-                    }
+                    float scale = Mathf.Clamp(12f / screen.z, 0.7f, 2f);
+
+                    Rect rect = new(
+                        screen.x - 10 * scale + previewRect.x,
+                        screen.y - 10 * scale + previewRect.y,
+                        20 * scale,
+                        20 * scale
+                    );
+
+                    EditorGUI.DrawRect(rect, new Color(h.color.r, h.color.g, h.color.b, 0.9f));
+
+                    HandleGizmoInteraction(h, rect, previewRect);
                 }
             }
             finally
             {
-                Handles.matrix = originalMatrix;
+                Handles.matrix = old;
             }
         }
 
-        private void HandleGizmoInteraction(GizmoHandle handle, Rect handleRect, Rect previewRect)
+        private void HandleGizmoInteraction(
+            GizmoHandle handle,
+            Rect rect,
+            Rect previewRect
+        )
         {
             Event e = Event.current;
-            int controlID = GUIUtility.GetControlID(FocusType.Passive);
 
             if (!previewRect.Contains(e.mousePosition))
                 return;
 
             switch (e.type)
             {
-                case EventType.MouseDown:
-                    if (handleRect.Contains(e.mousePosition) && e.button == 0)
-                    {
-                        _selectedGizmo = handle;
-                        _isDraggingGizmo = true;
-                        e.Use();
-                    }
+                case EventType.MouseDown
+                    when rect.Contains(e.mousePosition) && e.button == 0:
+                    _selectedGizmo = handle;
+                    _isDraggingGizmo = true;
+                    e.Use();
                     break;
 
-                case EventType.MouseDrag:
-                    if (_isDraggingGizmo && _selectedGizmo == handle && e.button == 0)
+                case EventType.MouseDrag
+                    when _isDraggingGizmo && _selectedGizmo == handle && e.button == 0:
+                    Plane plane = new(-_previewUtility.camera.transform.forward, handle.position);
+
+                    Vector3 mousePrev = e.mousePosition - e.delta;
+                    Vector3 mouseCurr = e.mousePosition;
+
+                    Ray prevRay = _previewUtility.camera.ScreenPointToRay(
+                        new Vector3(
+                            mousePrev.x,
+                            previewRect.height - mousePrev.y,
+                            0
+                        )
+                    );
+                    Ray currRay = _previewUtility.camera.ScreenPointToRay(
+                        new Vector3(
+                            mouseCurr.x,
+                            previewRect.height - mouseCurr.y,
+                            0
+                        )
+                    );
+
+                    if (plane.Raycast(prevRay, out float d1) &&
+                        plane.Raycast(currRay, out float d2))
                     {
-                        // Convert mouse movement to world space movement
-                        Vector3 delta = _previewUtility.camera.transform.right * e.delta.x * 0.01f +
-                                       _previewUtility.camera.transform.up * -e.delta.y * 0.01f;
-                        
-                        Vector3 newPosition = handle.position + delta;
-                        handle.position = newPosition;
-                        handle.onPositionChanged?.Invoke(newPosition);
-                        e.Use();
+                        Vector3 delta = currRay.GetPoint(d2) - prevRay.GetPoint(d1);
+                        Vector3 newPos = handle.position + delta;
+
+                        handle.position = newPos;
+                        handle.onPositionChanged?.Invoke(newPos);
                     }
+
+                    e.Use();
                     break;
 
-                case EventType.MouseUp:
-                    if (_isDraggingGizmo && e.button == 0)
-                    {
-                        _isDraggingGizmo = false;
-                        _selectedGizmo = null;
-                        e.Use();
-                    }
+                case EventType.MouseUp
+                    when _isDraggingGizmo && e.button == 0:
+                    _isDraggingGizmo = false;
+                    _selectedGizmo = null;
+                    e.Use();
                     break;
             }
         }
 
-        private bool IsGizmoTypeEnabled(GizmoType type)
-        {
-            return type switch
+        private bool IsGizmoTypeEnabled(GizmoType t) =>
+            t switch
             {
                 GizmoType.Wheel => _wheelsGizmo,
                 GizmoType.Collider => _collidersGizmo,
                 GizmoType.Suspension => _suspensionGizmo,
                 _ => true
             };
-        }
 
         public void Cleanup()
         {
+            if (_previewInstance != null)
+            {
+                Object.DestroyImmediate(_previewInstance);
+                _previewInstance = null;
+            }
+
             _gizmoHandles.Clear();
             _selectedGizmo = null;
-            
+
             if (_defaultMaterial != null)
             {
                 Object.DestroyImmediate(_defaultMaterial);
                 _defaultMaterial = null;
             }
-            
+
             if (_previewUtility != null)
             {
                 _previewUtility.Cleanup();
                 _previewUtility = null;
             }
-            
+
             _currentVehicle = null;
         }
     }

@@ -13,7 +13,6 @@ namespace UVS.Editor
     /// </summary>
     public class ModularVehicleEditorWindow : EditorWindow
     {
-        [MenuItem("Tools/Modular Vehicle Editor")]
         public static void ShowWindow() => GetWindow<ModularVehicleEditorWindow>("Modular Vehicle Editor");
         
         // Core systems
@@ -29,7 +28,7 @@ namespace UVS.Editor
         
         // State
         private IVehicleEditorModule _activeModule;
-        private Dictionary<string, VisualElement> _moduleUI = new Dictionary<string, VisualElement>();
+        private readonly Dictionary<string, VisualElement> _moduleUI = new();
         
         private void OnEnable()
         {
@@ -102,7 +101,7 @@ namespace UVS.Editor
             root.Clear();
             
             // Load styles
-            var uss = AssetDatabase.LoadAssetAtPath<StyleSheet>("Assets/Editor/UVS/ModularVehicleEditor.uss");
+            var uss = AssetDatabase.LoadAssetAtPath<StyleSheet>("Assets/Editor/UVS/UVS/ModularVehicleEditor.uss");
             if (uss != null) 
             {
                 root.styleSheets.Add(uss);
@@ -202,9 +201,11 @@ namespace UVS.Editor
             titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
             titleLabel.style.color = Color.white;
             header.Add(titleLabel);
-            
-            var statusLabel = new Label("Ready");
-            statusLabel.name = "statusLabel";
+
+            var statusLabel = new Label("Ready")
+            {
+                name = "statusLabel"
+            };
             statusLabel.style.color = Color.green;
             header.Add(statusLabel);
             
@@ -229,14 +230,14 @@ namespace UVS.Editor
         {
             var moduleUI = module.CreateUI();
             _moduleUI[module.ModuleId] = moduleUI;
-            
-            // Create tab button - FIXED: Store module in userData
-            var tabButton = new Button(() => ActivateModule(module.ModuleId))
-            {
-                text = module.DisplayName
-            };
-            tabButton.name = $"{module.ModuleId}Tab";
-            tabButton.AddToClassList("tab-button");
+
+                    // Create tab button - FIXED: Store module in userData
+                    var tabButton = new Button(() => ActivateModule(module.ModuleId))
+                    {
+                        text = module.DisplayName,
+                        name = $"{module.ModuleId}Tab"
+                    };
+                    tabButton.AddToClassList("tab-button");
             tabButton.userData = module;  // ← THIS IS THE CRITICAL FIX
             
             // Enable/disable based on requirements
@@ -272,10 +273,7 @@ namespace UVS.Editor
         private void ActivateModule(string moduleId)
         {
             // Deactivate current module
-            if (_activeModule != null)
-            {
-                _activeModule.OnDeactivate();
-            }
+            _activeModule?.OnDeactivate();
 
             // Get the module
             var module = _moduleRegistry.GetModule<IVehicleEditorModule>(moduleId);

@@ -1,4 +1,4 @@
-using UnityEngine.UIElements;
+﻿using UnityEngine.UIElements;
 using UnityEngine;
 using UnityEditor;
 using System.IO;
@@ -17,7 +17,103 @@ namespace UVS.Editor.Modules
         private TextField _seedField;
         private Label _idLabel;
         private EnumField _typeField;
+        private EnumField _categoryField;
+        private EnumField _specializedField;
         private Button _generateIDButton;
+            private readonly Dictionary<VehicleType, Enum> _vehicleCategoryMap = new()
+{
+    { VehicleType.Land, global::VehicleConfig.LandVehicleCategory.Standard },
+    { VehicleType.Air, global::VehicleConfig.AirVehicleCategory.Airplane },
+    { VehicleType.Water, global::VehicleConfig.WaterVehicleCategory.Boat },
+    { VehicleType.Space, global::VehicleConfig.SpaceVehicleCategory.Spaceship }
+};
+
+        private bool TypeSupportsSpecialization(VehicleType t)
+        {
+            return t == VehicleType.Land || t == VehicleType.Air;
+        }
+
+
+        private class VehicleSpecializationRule
+        {
+            public bool hasSpecializedCategory;
+            public bool hasSpecializedEnum;
+
+            public Type categoryEnumType;
+            public object specializedCategoryValue;
+
+            public Type specializedEnumType;
+            public object specializedEnumDefaultValue;
+        }
+
+
+        private readonly Dictionary<VehicleConfig.VehicleType, VehicleSpecializationRule> _rules =
+     new()
+     {
+        {
+            VehicleConfig.VehicleType.Land,
+            new VehicleSpecializationRule
+            {
+                hasSpecializedCategory = true,
+                hasSpecializedEnum      = true,
+
+                categoryEnumType          = typeof(VehicleConfig.LandVehicleCategory),
+                specializedCategoryValue  = VehicleConfig.LandVehicleCategory.Specialized,
+
+                specializedEnumType       = typeof(VehicleConfig.SpecializedLandVehicleType),
+                specializedEnumDefaultValue = VehicleConfig.SpecializedLandVehicleType.Construction
+            }
+        },
+        {
+            VehicleConfig.VehicleType.Air,
+            new VehicleSpecializationRule
+            {
+                hasSpecializedCategory = true,
+                hasSpecializedEnum     = true,
+
+                categoryEnumType         = typeof(VehicleConfig.AirVehicleCategory),
+                specializedCategoryValue = VehicleConfig.AirVehicleCategory.Specialized,
+
+                specializedEnumType      = typeof(VehicleConfig.SpecializedAirVehicleType),
+                specializedEnumDefaultValue = VehicleConfig.SpecializedAirVehicleType.VTOL
+            }
+        },
+        {
+            VehicleConfig.VehicleType.Water,
+            new VehicleSpecializationRule
+            {
+                hasSpecializedCategory = false,
+                hasSpecializedEnum     = false,
+
+                categoryEnumType = typeof(VehicleConfig.WaterVehicleCategory),
+                specializedCategoryValue = VehicleConfig.WaterVehicleCategory.Standard
+            }
+        },
+        {
+            VehicleConfig.VehicleType.Space,
+            new VehicleSpecializationRule
+            {
+                hasSpecializedCategory = false,
+                hasSpecializedEnum     = false,
+
+                categoryEnumType = typeof(VehicleConfig.SpaceVehicleCategory),
+                specializedCategoryValue = VehicleConfig.SpaceVehicleCategory.Standard
+            }
+        },
+        {
+            VehicleConfig.VehicleType.Fictional,
+            new VehicleSpecializationRule
+            {
+                hasSpecializedCategory = false,
+                hasSpecializedEnum     = false,
+
+                // choose whatever default category you want:
+                categoryEnumType = typeof(VehicleConfig.LandVehicleCategory),
+                specializedCategoryValue = VehicleConfig.LandVehicleCategory.Standard
+            }
+        }
+     };
+
 
         public override string ModuleId => "info";
         public override string DisplayName => "Info";
@@ -110,8 +206,18 @@ namespace UVS.Editor.Modules
             infoContainer.Add(_manufacturerField);
 
             _typeField = new EnumField("Vehicle Type", VehicleType.Land) { style = { marginBottom = 5 } };
-            _typeField.RegisterValueChangedCallback(_ => UpdateGenerateButton());
+            _typeField.RegisterValueChangedCallback(evt =>
+            {
+                UpdateGenerateButton();
+                UpdateCategoryField();
+                UpdateSpecializedField();
+            });
+
             infoContainer.Add(_typeField);
+
+            UpdateCategoryField();     // will create _categoryField
+            UpdateSpecializedField();  // will create or remove _specializedField as needed
+
 
             parent.Add(infoContainer);
         }
@@ -164,12 +270,143 @@ namespace UVS.Editor.Modules
             parent.Add(idContainer);
         }
 
+        private void UpdateCategoryField()
+        {
+            // Remove old category field if it exists
+            _categoryField?.RemoveFromHierarchy();
+            _categoryField = null;
+
+            // Get the selected module type (InfoModule.VehicleType)
+            var type = (VehicleType)_typeField.value;
+
+            // Determine the enum type we must present and a default value
+            Type categoryEnumType;
+            Enum defaultCategoryValue;
+
+            switch (type)
+            {
+                case VehicleType.Land:
+                    categoryEnumType = typeof(VehicleConfig.LandVehicleCategory);
+                    defaultCategoryValue = VehicleConfig.LandVehicleCategory.Standard;
+                    break;
+
+                case VehicleType.Air:
+                    categoryEnumType = typeof(VehicleConfig.AirVehicleCategory);
+                    defaultCategoryValue = VehicleConfig.AirVehicleCategory.Airplane;
+                    break;
+
+                case VehicleType.Water:
+                    categoryEnumType = typeof(VehicleConfig.WaterVehicleCategory);
+                    defaultCategoryValue = VehicleConfig.WaterVehicleCategory.Standard;
+                    break;
+
+                case VehicleType.Space:
+                    categoryEnumType = typeof(VehicleConfig.SpaceVehicleCategory);
+                    defaultCategoryValue = VehicleConfig.SpaceVehicleCategory.Standard;
+                    break;
+
+                case VehicleType.Fictional:
+                default:
+                    // choose a safe enum type for Fictional — you used LandVehicleCategory earlier
+                    categoryEnumType = typeof(VehicleConfig.LandVehicleCategory);
+                    defaultCategoryValue = VehicleConfig.LandVehicleCategory.Standard;
+                    break;
+            }
+
+            // Create EnumField using the proper typed Enum value
+            _categoryField = new EnumField("Vehicle Category", defaultCategoryValue)
+            {
+                style = { marginBottom = 5 }
+            };
+
+            // When user changes category, specialized field must update
+            _categoryField.RegisterValueChangedCallback(_ => UpdateSpecializedField());
+
+            // Add to UI
+            _typeField.parent.Add(_categoryField);
+        }
+
+        private void UpdateSpecializedField()
+        {
+            // Remove old specialized field cleanly
+            _specializedField?.RemoveFromHierarchy();
+            _specializedField = null;
+
+            // Read current selected type and category
+            var type = (VehicleType)_typeField.value;
+
+            // If category field doesn't exist yet, nothing to do
+            if (_categoryField == null)
+                return;
+
+            // Convert the category field to string to check if user picked "Specialized"
+            // (we compare names because category enum types differ per vehicle type)
+            string categoryName = _categoryField.value?.ToString() ?? "Standard";
+
+            bool supportsSpecial = TypeSupportsSpecialization(type);
+
+            // If the type does not support specialization -> force category to Standard and bail out
+            if (!supportsSpecial)
+            {
+                // force Standard on that category enum type
+                // We can't directly assign a different enum type; use Enum.Parse on the correct enum type.
+                // Determine the enum type used by _categoryField:
+                var enumType = _categoryField.value.GetType();
+
+                if (enumType != null)
+                {
+                    // assign Standard (safely)
+                    try
+                    {
+                        var standardValue = Enum.Parse(enumType, "Standard");
+                        _categoryField.value = (Enum)standardValue;
+                    }
+                    catch
+                    {
+                        // fallback: do nothing if the enum doesn't have Standard
+                    }
+                }
+
+                return;
+            }
+
+            // Only show specialized field if category is "Specialized"
+            if (!string.Equals(categoryName, "Specialized", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            // Create correct specialized enum field depending on type (Land or Air)
+            if (type == VehicleType.Land)
+            {
+                _specializedField = new EnumField(
+                    "Specialized Type",
+                    VehicleConfig.SpecializedLandVehicleType.Construction)
+                {
+                    style = { marginBottom = 5 }
+                };
+            }
+            else if (type == VehicleType.Air)
+            {
+                _specializedField = new EnumField(
+                    "Specialized Type",
+                    VehicleConfig.SpecializedAirVehicleType.VTOL)
+                {
+                    style = { marginBottom = 5 }
+                };
+            }
+
+            if (_specializedField != null)
+            {
+                _typeField.parent.Add(_specializedField);
+            }
+        }
+
+
         private void OnDragUpdated(DragUpdatedEvent e)
         {
             if (DragAndDrop.objectReferences.Length == 1 &&
                 DragAndDrop.objectReferences[0] is GameObject go &&
                 PrefabUtility.IsPartOfPrefabAsset(go) &&
-                go.tag == "vehicle")
+                go.CompareTag("vehicle"))
             {
                 DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
             }
@@ -185,7 +422,7 @@ namespace UVS.Editor.Modules
             e.StopPropagation();
 
             if (DragAndDrop.objectReferences.Length != 1 ||
-                !(DragAndDrop.objectReferences[0] is GameObject go))
+                DragAndDrop.objectReferences[0] is not GameObject go)
             {
                 LogError("Please drop exactly one prefab here.");
                 return;
@@ -208,8 +445,6 @@ namespace UVS.Editor.Modules
                 OnConfigChanged(_context.CurrentConfig);
             }
         }
-
-        // In InfoModule.cs, replace the HandlePrefabDropped method with this:
 
         private void HandlePrefabDropped(GameObject prefab)
         {
@@ -259,6 +494,8 @@ namespace UVS.Editor.Modules
             _generateIDButton.SetEnabled(valid);
         }
 
+
+
         private void OnGenerateID()
         {
             if (_context.SelectedPrefab == null)
@@ -281,13 +518,13 @@ namespace UVS.Editor.Modules
             }
 
             string guid = System.Guid.NewGuid().ToString("N").ToUpper();
-            string id = $"{prefix}{seed}-{guid.Substring(0, 4)}-{guid.Substring(4, 4)}-{guid.Substring(8, 4)}";
+            string id = $"{prefix}{seed}-{guid[..4]}-{guid.Substring(4, 4)}-{guid.Substring(8, 4)}";
 
             int tries = 0;
             while (_context.Registry.ContainsID(id) && tries++ < 5)
             {
                 guid = System.Guid.NewGuid().ToString("N").ToUpper();
-                id = $"{prefix}{seed}-{guid.Substring(0, 4)}-{guid.Substring(4, 4)}-{guid.Substring(8, 4)}";
+                id = $"{prefix}{seed}-{guid[..4]}-{guid.Substring(4, 4)}-{guid.Substring(8, 4)}";
             }
 
             if (_context.Registry.ContainsID(id))
@@ -309,7 +546,7 @@ namespace UVS.Editor.Modules
             if (!AssetDatabase.IsValidFolder(folder))
                 AssetDatabase.CreateFolder("Assets", "VehicleConfigs");
 
-            string configPath = $"{folder}/{_context.SelectedPrefab.name}_{prefabGuid.Substring(0, 8)}Config.asset";
+            string configPath = $"{folder}/{_context.SelectedPrefab.name}_{prefabGuid[..8]}Config.asset";
             AssetDatabase.CreateAsset(newConfig, configPath);
             AssetDatabase.SaveAssets();
 
@@ -338,7 +575,7 @@ namespace UVS.Editor.Modules
         {
             if (config != null)
             {
-                _vehicleNameField.value = config.prefabReference?.name ?? "";
+                _vehicleNameField.value = config.prefabReference != null ? config.prefabReference.name : null ?? "";
                 _idLabel.text = config.id;
                 _idLabel.style.color = Color.green;
             }

@@ -4,17 +4,13 @@ using System.Collections.Generic;
 
 namespace UVS.Editor.Core
 {
-    /// <summary>
     /// Unified Vehicle Control SDK for specialized vehicle types
     /// Provides consistent interface for tanks, VTOLs, construction equipment
-    /// </summary>
     public class VehicleControlSDK
     {
         #region Core Control Interfaces
 
-        /// <summary>
         /// Base interface for all specialized vehicle controls
-        /// </summary>
         public interface ISpecializedControl
         {
             string ControlName { get; }
@@ -25,9 +21,7 @@ namespace UVS.Editor.Core
             void Reset();
         }
 
-        /// <summary>
         /// Tank-specific control interface
-        /// </summary>
         public interface ITankControl : ISpecializedControl
         {
             // Turret controls
@@ -51,9 +45,7 @@ namespace UVS.Editor.Core
             bool IsReloading();
         }
 
-        /// <summary>
         /// VTOL-specific control interface
-        /// </summary>
         public interface IVTOLControl : ISpecializedControl
         {
             // Flight mode controls
@@ -75,9 +67,7 @@ namespace UVS.Editor.Core
             bool IsInTransition();
         }
 
-        /// <summary>
         /// Construction equipment control interface
-        /// </summary>
         public interface IConstructionControl : ISpecializedControl
         {
             // Arm controls
@@ -106,9 +96,7 @@ namespace UVS.Editor.Core
             float GetLoadWeight();
         }
 
-        /// <summary>
         /// Marine vessel control interface
-        /// </summary>
         public interface IMarineControl : ISpecializedControl
         {
             // Propulsion
@@ -133,9 +121,7 @@ namespace UVS.Editor.Core
 
         #region Control Implementation Classes
 
-        /// <summary>
         /// Tank control implementation
-        /// </summary>
         public class TankControl : ITankControl
         {
             public string ControlName => "Tank Control System";
@@ -260,9 +246,7 @@ namespace UVS.Editor.Core
             #endregion
         }
 
-        /// <summary>
         /// VTOL control implementation
-        /// </summary>
         public class VTOLControl : IVTOLControl
         {
             public string ControlName => "VTOL Control System";
@@ -363,9 +347,7 @@ namespace UVS.Editor.Core
             #endregion
         }
 
-        /// <summary>
         /// Construction equipment control implementation
-        /// </summary>
         public class ConstructionControl : IConstructionControl
         {
             public string ControlName => "Construction Control System";
@@ -486,9 +468,8 @@ namespace UVS.Editor.Core
             #endregion
         }
 
-        /// <summary>
+
         /// Marine vessel control implementation
-        /// </summary>
         public class MarineControl : IMarineControl
         {
             public string ControlName => "Marine Control System";
@@ -589,7 +570,7 @@ namespace UVS.Editor.Core
         #endregion
 
         #region Control Manager
-        private Dictionary<ControlType, ISpecializedControl> _controls = new Dictionary<ControlType, ISpecializedControl>();
+        private readonly Dictionary<ControlType, ISpecializedControl> _controls = new();
         private VehicleEditorContext _context;
 
         public void Initialize(VehicleEditorContext context)
@@ -616,7 +597,7 @@ namespace UVS.Editor.Core
         {
             if (_controls.ContainsKey(type))
                 return (T)_controls[type];
-            return default(T);
+            return default;
         }
 
         public void UpdateControls(float deltaTime)

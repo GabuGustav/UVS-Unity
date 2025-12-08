@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 using UnityEditor;
 
@@ -6,19 +6,19 @@ using UnityEditor;
 public class VehicleIDRegistry : ScriptableObject
 {
     [Header("Registry Storage")]
-    [SerializeField] private List<string> registeredIDs = new List<string>();
+    [SerializeField] private List<string> registeredIDs = new();
     
     [Header("Current Vehicle Info")]
     public string vehicleID;
+    public string vehicleName;
     public string vehicleType;
+    public string manufacturer;
     public int seatingCapacity;
     public VehicleConfig config;
 
     // Dual mapping: ID -> Config AND PrefabGUID -> Config
-    private Dictionary<string, VehicleConfig> idToConfigMap = new Dictionary<string, VehicleConfig>();
-    private Dictionary<string, VehicleConfig> prefabGuidToConfigMap = new Dictionary<string, VehicleConfig>();
-
-    // In VehicleIDRegistry.cs, replace the RegisterID method with this:
+    private readonly Dictionary<string, VehicleConfig> idToConfigMap = new();
+    private readonly Dictionary<string, VehicleConfig> prefabGuidToConfigMap = new();
 
     public void RegisterID(string vehicleID, GameObject vehiclePrefab)
     {
@@ -108,7 +108,7 @@ public class VehicleIDRegistry : ScriptableObject
     public string GetIDForPrefab(GameObject prefab)
     {
         VehicleConfig config = GetConfigForPrefab(prefab);
-        return config?.id;
+        return config != null ? config.id : null;
     }
 
     public List<string> GetAllRegisteredIDs()
@@ -195,7 +195,7 @@ public class VehicleIDRegistry : ScriptableObject
         if (!AssetDatabase.IsValidFolder(folder))
             AssetDatabase.CreateFolder("Assets", "VehicleConfigs");
         
-        string cfgPath = $"{folder}/{prefab.name}_{prefabGuid.Substring(0, 8)}Config.asset";
+        string cfgPath = $"{folder}/{prefab.name}_{prefabGuid[..8]}Config.asset";
         AssetDatabase.CreateAsset(newConfig, cfgPath);
         AssetDatabase.SaveAssets();
         
