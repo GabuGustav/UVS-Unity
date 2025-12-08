@@ -153,6 +153,42 @@ public class VehicleConfig : ScriptableObject
 
     public enum VehicleType { Land, Air, Water, Space, Fictional }
 
+    public enum SpecializedLandVehicleType
+    {
+        Construction,Tank
+    }
+
+    public enum SpecializedAirVehicleType
+    {
+        VTOL, Drone, Glider
+    }
+
+    public enum LandVehicleCategory
+    {
+        Sedan, SUV, Truck, Motorcycle, SportsCar,
+        OffRoad, Bus, Van, Coupe, Convertible,
+        Hatchback, Wagon, Electric,
+        Standard,Classic, Specialized
+    }
+
+    public enum AirVehicleCategory
+    {
+        Airplane, Helicopter, Glider,
+        Standard, Specialized
+    }
+
+    public enum WaterVehicleCategory
+    {
+        Boat, Ship, Submarine, JetSki, Sailboat,
+        Standard,
+    }
+
+    public enum SpaceVehicleCategory
+    {
+        Shuttle, Rover, Satellite, SpaceStation, Fighter,
+        Standard, Spaceship
+    }
+
     // General vehicle measurements
     [Serializable]
     public class VehicleMeasurements
