@@ -1,9 +1,8 @@
 using UnityEngine;
-using UnityEditor.UIElements;
 using UnityEngine.UIElements;
-using System.Collections.Generic;
 using System;
 using UVS.Editor.Core;
+using Unity.VisualScripting;
 
 namespace UVS.Editor.Modules.Specialized
 {
@@ -18,6 +17,10 @@ namespace UVS.Editor.Modules.Specialized
         public override string DisplayName => "Tank Systems";
         public override int Priority => 50;
         public override bool RequiresVehicle => true;
+        public override bool RequiresSpecializedCategory => true;
+        public override bool IsConstructionModule => false;
+        public override bool IsTankModule => true;
+        public override bool IsVTOLModule => false;
         #endregion
 
         #region UI Fields

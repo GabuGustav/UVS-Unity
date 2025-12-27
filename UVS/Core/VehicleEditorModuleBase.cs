@@ -1,6 +1,5 @@
 using UnityEngine.UIElements;
 using UnityEngine;
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -12,6 +11,11 @@ namespace UVS.Editor.Core
         string DisplayName { get; }
         int Priority { get; }
         bool RequiresVehicle { get; }
+
+        bool RequiresSpecializedCategory { get; }
+        bool IsConstructionModule { get; }
+        bool IsTankModule { get; }
+        bool IsVTOLModule { get; }
 
         void Initialize(VehicleEditorContext context);
         VisualElement CreateUI();
@@ -92,6 +96,26 @@ namespace UVS.Editor.Core
         public abstract string DisplayName { get; }
         public abstract int Priority { get; }
         public virtual bool RequiresVehicle { get { return true; } }
+
+        public virtual bool RequiresSpecializedCategory
+        {
+            get { return true; }
+        }
+
+        public virtual bool IsConstructionModule
+        {
+            get { return false; }
+        }
+
+        public virtual bool IsTankModule
+        {
+            get { return false; }
+        }
+
+        public virtual bool IsVTOLModule
+        {
+            get { return false; }
+        }
 
         public VisualElement CreateUI()
         {

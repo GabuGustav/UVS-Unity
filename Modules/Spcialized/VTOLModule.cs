@@ -1,7 +1,5 @@
 using UnityEngine;
-using UnityEditor.UIElements;
 using UnityEngine.UIElements;
-using System.Collections.Generic;
 using System;
 using UVS.Editor.Core;
 
@@ -18,6 +16,11 @@ namespace UVS.Editor.Modules.Specialized
         public override string DisplayName => "VTOL Systems";
         public override int Priority => 60;
         public override bool RequiresVehicle => true;
+        public override bool RequiresSpecializedCategory => true;
+        public override bool IsConstructionModule => false;
+        public override bool IsTankModule => false;
+        public override bool IsVTOLModule => true;
+
         #endregion
 
         #region UI Fields

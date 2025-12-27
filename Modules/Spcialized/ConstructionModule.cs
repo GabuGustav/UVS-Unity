@@ -18,6 +18,12 @@ namespace UVS.Editor.Modules.Specialized
         public override string DisplayName => "Construction Equipment";
         public override int Priority => 70;
         public override bool RequiresVehicle => true;
+
+        public override bool RequiresSpecializedCategory => true;
+        public override bool IsConstructionModule => true;
+        public override bool IsTankModule => false;
+        public override bool IsVTOLModule => false;
+
         #endregion
 
         #region UI Fields

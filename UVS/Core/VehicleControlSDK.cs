@@ -347,6 +347,7 @@ namespace UVS.Editor.Core
             #endregion
         }
 
+
         /// Construction equipment control implementation
         public class ConstructionControl : IConstructionControl
         {

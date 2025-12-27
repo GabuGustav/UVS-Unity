@@ -11,7 +11,7 @@ namespace UVS.Editor.Core
         public VehicleIDRegistry Registry { get; set; }
         public Dictionary<string, VehicleConfig> GuidToConfigMap { get; set; }
         public bool IsFinalized { get; set; }
-        public VehiclePreview3D Preview { get; set; }
+        public IVehiclePreview Preview { get; set; }
         public EnhancedEditorConsole Console { get; set; }
         public Dictionary<VehicleConfig.VehiclePartType, List<Transform>> LastScan { get; set; }
 

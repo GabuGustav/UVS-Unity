@@ -119,6 +119,10 @@ namespace UVS.Editor.Modules
         public override string DisplayName => "Info";
         public override int Priority => 10;
         public override bool RequiresVehicle => false;
+        public override bool RequiresSpecializedCategory => false;
+        public override bool IsConstructionModule => false;
+        public override bool IsTankModule => false;
+        public override bool IsVTOLModule => false;
 
         protected override VisualElement CreateModuleUI()
         {

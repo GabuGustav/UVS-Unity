@@ -19,6 +19,11 @@ namespace UVS.Editor.Modules
         public override string ModuleId => "parts";
         public override string DisplayName => "Parts";
         public override int Priority => 20;
+        public override bool RequiresVehicle => true;
+        public override bool RequiresSpecializedCategory => false;
+        public override bool IsConstructionModule => false;
+        public override bool IsTankModule => false;
+        public override bool IsVTOLModule => false;
 
         protected override VisualElement CreateModuleUI()
         {

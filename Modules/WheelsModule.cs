@@ -18,8 +18,12 @@ namespace UVS.Editor.Modules
         public override string ModuleId => "wheels";
         public override string DisplayName => "Wheels";
         public override int Priority => 30;
+        public override bool RequiresSpecializedCategory => false;
+        public override bool IsConstructionModule => false;
+        public override bool IsTankModule => false;
+        public override bool IsVTOLModule => false;
 
-        protected bool HasValidVehicle()
+        protected new bool HasValidVehicle()
         {
             return _context?.CurrentConfig != null;
         }
