@@ -62,8 +62,6 @@ namespace UVS.Editor
             _moduleRegistry = new VehicleEditorModuleRegistry();
             _moduleRegistry.Initialize();
 
-            _moduleRegistry.RegisterModule(new LowriderModule());
-
             _context = new VehicleEditorContext();
             LoadRegistryAndConfigs();
 
@@ -278,21 +276,6 @@ namespace UVS.Editor
 
                     // Base check: needs vehicle loaded
                     bool canActivate = !module.RequiresVehicle || HasValidVehicle();
-
-                    // STRICT CHECK FOR LOWRIDER MODULE ONLY
-                    if (module.ModuleId == "lowrider")
-                    {
-                        bool isClassicLand = _context?.CurrentConfig != null &&
-                                             _context.CurrentConfig.vehicleType == VehicleConfig.VehicleType.Land &&
-                                             _context.CurrentConfig.landVehicleCategory == VehicleConfig.LandVehicleCategory.Classic;
-
-                        canActivate = canActivate && isClassicLand;
-
-                        if (HasValidVehicle() && !isClassicLand)
-                        {
-                            btn.tooltip = "Lowrider Hydraulics: Requires Classic Land vehicle";
-                        }
-                    }
 
                     btn.SetEnabled(canActivate);
 
