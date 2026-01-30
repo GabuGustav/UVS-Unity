@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: VehicleIDRegistry
   m_EditorClassIdentifier: Assembly-CSharp-Editor::VehicleIDRegistry
   registeredIDs:
-  - LFAT-0DB8-DEA9-CBC3
+  - LFAT-071B-9B91-D4F3
+  - LLAK-6D85-9631-A672
+  - Vehicle_e0941cdb
   vehicleID: 
   vehicleName: 
   vehicleType: 

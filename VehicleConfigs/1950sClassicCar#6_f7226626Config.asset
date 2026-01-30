@@ -14,8 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::VehicleConfig
   prefabGuid: f72266263fecefe48819da89265ea98e
   prefabReference: {fileID: 3547188460827250363, guid: f72266263fecefe48819da89265ea98e, type: 3}
-  id: LLAK-6D85-9631-A672
-  vehicleName: 
+  id: LFAT-F3DA-B0C1-1E67
+  vehicleName: Classic Car
+  authorname: Author
+  vehicleType: 0
+  vehicleCategory: Classic
+  specializedType: 
   partClassifications:
   - partPath: 1950sClassicCar#6
     partType: 0
@@ -73,6 +77,16 @@ MonoBehaviour:
     partType: 13
   - partPath: 1950sClassicCar#6/S_Main/Collider.007
     partType: 13
+  - partPath: WheelColliders
+    partType: 13
+  - partPath: WheelColliders/S_FLWheel_collider
+    partType: 13
+  - partPath: WheelColliders/S_FRWheel_collider
+    partType: 13
+  - partPath: WheelColliders/S_RLWheel_collider
+    partType: 13
+  - partPath: WheelColliders/S_RRWheel_collider
+    partType: 13
   - partPath: 1950sClassicCar#6/S_Main/S_SteeringWheel
     partType: 14
   - partPath: 1950sClassicCar#6/S_Main/S_LeftDoor
@@ -119,13 +133,14 @@ MonoBehaviour:
     isPowered: 1
     isSteering: 0
   engine:
-    horsepower: 150
-    torque: 200
+    horsepower: 14000
+    torque: 8000
     cylinderCount: 4
     displacement: 2
     redlineRPM: 7000
-    idleRPM: 800
-    drivetrain: 0
+    idleRPM: 700
+    engineRPM: 8000
+    drivetrain: 2
     startClip: {fileID: 0}
     stopClip: {fileID: 0}
     idleClip: {fileID: 0}

@@ -13,6 +13,7 @@ namespace UVS.Editor.Modules
     public class EngineModule : VehicleEditorModuleBase
     {
         private FloatField _horsepowerField;
+        private FloatField _enginRPMField;
         private FloatField _torqueField;
         private IntegerField _cylinderField;
         private FloatField _displacementField;
@@ -75,6 +76,17 @@ namespace UVS.Editor.Modules
                 }
             });
             performanceGroup.Add(_horsepowerField);
+
+            _enginRPMField = new FloatField("EngineRPM");
+            _enginRPMField.RegisterValueChangedCallback(evt =>
+            {
+                if (_context?.CurrentConfig != null)
+                {
+                    _context.CurrentConfig.engine.engineRPM = evt.newValue;
+                    EditorUtility.SetDirty(_context.CurrentConfig);
+                }
+            });
+            performanceGroup.Add(_enginRPMField);
 
             _torqueField = new FloatField("Torque (Nm)");
             _torqueField.RegisterValueChangedCallback(evt =>
@@ -255,6 +267,7 @@ namespace UVS.Editor.Modules
         private void LoadEngineSettings(VehicleConfig.EngineSettings engine)
         {
             _horsepowerField.value = engine.horsepower;
+            _enginRPMField.value = engine.engineRPM;
             _torqueField.value = engine.torque;
             _cylinderField.value = engine.cylinderCount;
             _displacementField.value = engine.displacement;

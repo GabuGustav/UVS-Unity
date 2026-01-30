@@ -11,6 +11,16 @@ public class VehicleConfig : ScriptableObject
     public string vehicleName;
     public string authorname;
 
+    // ============ VEHICLE CLASSIFICATION ============
+    [Header("Vehicle Classification")]
+    public VehicleType vehicleType = VehicleType.Land;
+    public string vehicleCategory = "Standard"; // Stored as string for flexibility
+    public string specializedType = ""; // Empty if not specialized
+
+    // Helper properties for type-safe access
+    public bool IsSpecialized => !string.IsNullOrEmpty(specializedType);
+    // ================================================
+
     // Dynamic properties storage for specialized modules
     private readonly Dictionary<string, object> _dynamicProperties = new();
 
@@ -155,7 +165,7 @@ public class VehicleConfig : ScriptableObject
 
     public enum SpecializedLandVehicleType
     {
-        Construction,Tank
+        Construction, Tank
     }
 
     public enum SpecializedAirVehicleType
@@ -168,7 +178,7 @@ public class VehicleConfig : ScriptableObject
         Sedan, SUV, Truck, Motorcycle, SportsCar,
         OffRoad, Bus, Van, Coupe, Convertible,
         Hatchback, Wagon, Electric,
-        Standard,Classic, Specialized
+        Standard, Classic, Specialized
     }
 
     public enum AirVehicleCategory
@@ -231,6 +241,8 @@ public class VehicleConfig : ScriptableObject
         public float displacement = 2.0f;
         public float redlineRPM = 7000f;
         public float idleRPM = 800f;
+        public float engineRPM = 5000f;
+        
 
         [Header("Drivetrain")]
         public Drivetrain drivetrain = Drivetrain.RWD;
@@ -431,7 +443,7 @@ public class VehicleConfig : ScriptableObject
         public float damageMultiplier = 1f;
         public bool visualDamage = true;
     }
-    public DamageSettings damage = new ();
+    public DamageSettings damage = new();
 
     // Public property for VehicleID compatibility
     public string VehicleID => id;
@@ -475,4 +487,69 @@ public class VehicleConfig : ScriptableObject
         fuelSystem.currentFuel = fuelSystem.fuelCapacity;
         ClearDynamicProperties();
     }
+
+    // ============ CLASSIFICATION HELPER METHODS ============
+    /// <summary>
+    /// Get the current category as a specific enum type
+    /// </summary>
+    public T GetCategoryEnum<T>() where T : Enum
+    {
+        if (string.IsNullOrEmpty(vehicleCategory))
+            return default;
+
+        try
+        {
+            return (T)Enum.Parse(typeof(T), vehicleCategory);
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// Set category from any enum type
+    /// </summary>
+    public void SetCategoryEnum<T>(T categoryValue) where T : Enum
+    {
+        vehicleCategory = categoryValue.ToString();
+    }
+
+    /// <summary>
+    /// Get specialized type as enum
+    /// </summary>
+    public T GetSpecializedEnum<T>() where T : Enum
+    {
+        if (string.IsNullOrEmpty(specializedType))
+            return default;
+
+        try
+        {
+            return (T)Enum.Parse(typeof(T), specializedType);
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// Set specialized type from enum
+    /// </summary>
+    public void SetSpecializedEnum<T>(T specializedValue) where T : Enum
+    {
+        specializedType = specializedValue.ToString();
+    }
+
+    /// <summary>
+    /// Check if this vehicle matches a specific type/category combination
+    /// </summary>
+    public bool MatchesClassification(VehicleType type, string category = null, string specialized = null)
+    {
+        if (vehicleType != type) return false;
+        if (category != null && vehicleCategory != category) return false;
+        if (specialized != null && specializedType != specialized) return false;
+        return true;
+    }
+    // ======================================================
 }
