@@ -1,3 +1,5 @@
+Known Issue: The Editor may refuse to save some values to the config. I have added a workaround for such a case. Navigate to Assets/VehicleConfigs, find your specific config and change the value fom there.  It should save. 
+
 HOW TO USE:
 
 1. Go to releases and download the latest or oldest Unity Package.
