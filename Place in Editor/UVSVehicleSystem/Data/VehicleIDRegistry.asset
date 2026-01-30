@@ -9,15 +9,16 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: df2de90e417a0ba4f9ca364046bde282, type: 3}
+  m_Script: {fileID: 11500000, guid: 5282d2a4c4fb01a4ca01d9c8b1effd6e, type: 3}
   m_Name: VehicleIDRegistry
   m_EditorClassIdentifier: Assembly-CSharp-Editor::VehicleIDRegistry
   registeredIDs:
+  - LFAT-071B-9B91-D4F3
   - LLAK-6D85-9631-A672
   - Vehicle_e0941cdb
-  - LFAT-071B-9B91-D4F3
   vehicleID: 
   vehicleName: 
   vehicleType: 
+  manufacturer: 
   seatingCapacity: 0
   config: {fileID: 0}
