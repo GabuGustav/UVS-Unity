@@ -24,6 +24,15 @@ namespace UVS.Editor.Modules.Specialized
         public override bool IsTankModule => false;
         public override bool IsVTOLModule => false;
 
+        public override bool CanActivateWithConfig(VehicleConfig config)
+        {
+            if (config == null) return false;
+
+            return config.vehicleType == VehicleConfig.VehicleType.Land &&
+                   config.landCategory == VehicleConfig.LandVehicleCategory.Specialized &&
+                   config.specializedLand == VehicleConfig.SpecializedLandVehicleType.Construction;
+        }
+
         #endregion
 
         #region UI Fields

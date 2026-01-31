@@ -27,6 +27,8 @@ namespace UVS.Editor.Core
         ValidationResult Validate();
         void Cleanup();
         void OnModuleGUI();
+
+        bool CanActivateWithConfig(VehicleConfig config);
     }
 
     public enum ValidationSeverity
@@ -115,6 +117,15 @@ namespace UVS.Editor.Core
         public virtual bool IsVTOLModule
         {
             get { return false; }
+        }
+
+        public virtual bool CanActivateWithConfig(VehicleConfig config)
+        {
+            // Default behavior: only requires a vehicle to exist
+            if (RequiresVehicle && config == null)
+                return false;
+
+            return true;
         }
 
         public VisualElement CreateUI()

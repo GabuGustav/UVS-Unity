@@ -23,7 +23,7 @@ public class VehicleController : MonoBehaviour
 
     [Header("Transmission")]
     public bool isAutomatic = true;
-    public int gear { get; private set; } = 1; // 0 = R, 1 = N, 2+ = forward
+    public int Gear { get; private set; } = 1; // 0 = R, 1 = N, 2+ = forward
     private float[] gearRatios;
     public float engineRPM;
     private float wheelRPM;
@@ -116,25 +116,25 @@ public class VehicleController : MonoBehaviour
         // Gear shift for direction when stopped
         if (nearlyStopped)
         {
-            if (wantRev && gear != 0)
+            if (wantRev && Gear != 0)
             {
-                gear = 0;
+                Gear = 0;
                 shiftTimer = SHIFT_COOLDOWN;
             }
-            else if (wantFwd && gear < 2)
+            else if (wantFwd && Gear < 2)
             {
-                gear = 2;
+                Gear = 2;
                 shiftTimer = SHIFT_COOLDOWN;
             }
         }
 
         // Torque (positive always, sign from gear)
         currentMotorTorque = 0f;
-        if (wantFwd && gear >= 2)
+        if (wantFwd && Gear >= 2)
         {
             currentMotorTorque = accel * eng.torque * torqueMultiplier;
         }
-        else if (wantRev && gear == 0)
+        else if (wantRev && Gear == 0)
         {
             currentMotorTorque = brake * eng.torque * torqueMultiplier * reverseTorqueMultiplier;
         }
@@ -156,7 +156,7 @@ public class VehicleController : MonoBehaviour
 
         // Brakes - ONLY when NOT reversing accel
         currentBrakeTorque = 0f;
-        if (!wantRev || gear != 0)
+        if (!wantRev || Gear != 0)
         {
             currentBrakeTorque = brake * brk.frontDiscDiameter * brakeStrengthMultiplier;
         }
@@ -178,7 +178,7 @@ public class VehicleController : MonoBehaviour
 
         // RPM calc & auto shift
         CalculateRPM(eng.drivetrain);
-        if (isAutomatic && gear >= 2)
+        if (isAutomatic && Gear >= 2)
         {
             HandleAutoShift(trans);
         }
@@ -223,19 +223,19 @@ public class VehicleController : MonoBehaviour
             return;
         }
 
-        if (engineRPM > config.engine.redlineRPM * 0.92f && gear < trans.gearCount + 1)
+        if (engineRPM > config.engine.redlineRPM * 0.92f && Gear < trans.gearCount + 1)
         {
-            gear++;
+            Gear++;
             shiftTimer = SHIFT_COOLDOWN;
         }
-        else if (engineRPM < config.engine.idleRPM * 2.5f && gear > 2)
+        else if (engineRPM < config.engine.idleRPM * 2.5f && Gear > 2)
         {
-            gear--;
+            Gear--;
             shiftTimer = SHIFT_COOLDOWN;
         }
     }
 
-    private float GetGearRatio() => gear < gearRatios.Length ? gearRatios[gear] : 1f;
+    private float GetGearRatio() => Gear < gearRatios.Length ? gearRatios[Gear] : 1f;
 
     private void ApplyMotorTorque(VehicleConfig.EngineSettings.Drivetrain dt)
     {

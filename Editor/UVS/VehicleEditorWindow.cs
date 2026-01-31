@@ -65,17 +65,18 @@ namespace UVS.Editor
             _context = new VehicleEditorContext();
             LoadRegistryAndConfigs();
 
-            // preview manager
             _previewManager = new VehiclePreviewManager();
 
-            // console
             _console = new EnhancedEditorConsole(_consoleArea);
             _context.Console = _console;
 
-            // subscribe
             _context.OnLogMessage += _console.LogInfo;
             _context.OnLogError += _console.LogError;
             _context.OnValidationRequired += ValidateAllModules;
+
+            // ============ ADD THIS ============
+            _context.OnConfigChanged += OnContextConfigChanged;
+            // ==================================
         }
 
         private void LoadRegistryAndConfigs()
@@ -214,7 +215,7 @@ namespace UVS.Editor
         private void DrawPreviewControls()
         {
             if (_previewContainer == null) return;
-            Rect controlsRect = new Rect(_previewContainer.contentRect.x + 8, _previewContainer.contentRect.y + 8, 220, 120);
+            Rect controlsRect = new(_previewContainer.contentRect.x + 8, _previewContainer.contentRect.y + 8, 220, 120);
             GUILayout.BeginArea(controlsRect);
             GUILayout.BeginVertical("Box");
             GUILayout.Label("3D Preview Controls", EditorStyles.boldLabel);
@@ -274,22 +275,20 @@ namespace UVS.Editor
                         name = $"{module.ModuleId}Tab"
                     };
 
-                    // Base check: needs vehicle loaded
-                    bool canActivate = !module.RequiresVehicle || HasValidVehicle();
-
-                    btn.SetEnabled(canActivate);
-
-                    if (!canActivate && module.RequiresVehicle && !HasValidVehicle())
-                    {
-                        btn.tooltip = "Requires a vehicle to be loaded";
-                    }
+                    // Initial visibility check
+                    bool canShow = module.CanActivateWithConfig(_context.CurrentConfig);
+                    btn.style.display = canShow ? DisplayStyle.Flex : DisplayStyle.None;
 
                     _tabStrip.Add(btn);
                     _tabButtons[module.ModuleId] = btn;
                 }
 
-                if (_moduleRegistry.Modules.Count > 0)
-                    ActivateModule(_moduleRegistry.Modules[0].ModuleId);
+                // Activate first visible module
+                var firstVisibleModule = _moduleRegistry.Modules
+                    .FirstOrDefault(m => m.CanActivateWithConfig(_context.CurrentConfig));
+
+                if (firstVisibleModule != null)
+                    ActivateModule(firstVisibleModule.ModuleId);
             }
             catch (System.Exception ex)
             {
@@ -318,15 +317,15 @@ namespace UVS.Editor
         {
             foreach (var kv in _tabButtons)
             {
-                bool active = _activeModule != null && _activeModule.ModuleId == kv.Key;
-                kv.Value.EnableInClassList("tab-active", active);
-
                 var module = _moduleRegistry?.GetModule<IVehicleEditorModule>(kv.Key);
-                if (module != null)
-                {
-                    bool can = !module.RequiresVehicle || HasValidVehicle();
-                    kv.Value.SetEnabled(can);
-                }
+                if (module == null) continue;
+
+                bool isActive = _activeModule != null && _activeModule.ModuleId == kv.Key;
+                kv.Value.EnableInClassList("tab-active", isActive);
+
+                // Update visibility based on config
+                bool canShow = module.CanActivateWithConfig(_context?.CurrentConfig);
+                kv.Value.style.display = canShow ? DisplayStyle.Flex : DisplayStyle.None;
             }
         }
 
@@ -377,6 +376,13 @@ namespace UVS.Editor
             try
             {
                 _previewManager?.Cleanup();
+
+                // ============ ADD THIS ============
+                if (_context != null)
+                {
+                    _context.OnConfigChanged -= OnContextConfigChanged;
+                }
+                // ==================================
 
                 if (_moduleRegistry != null)
                 {
@@ -464,5 +470,24 @@ namespace UVS.Editor
         }
 
         public void RefreshPreview() => _previewContainer?.MarkDirtyRepaint();
+
+        private void OnContextConfigChanged(VehicleConfig config)
+        {
+            // Update tab visibility when config changes
+            UpdateTabButtons();
+
+            // If active module is now hidden, switch to first visible one
+            if (_activeModule != null && !_activeModule.CanActivateWithConfig(config))
+            {
+                var firstVisible = _moduleRegistry?.Modules
+                    .FirstOrDefault(m => m.CanActivateWithConfig(config));
+
+                if (firstVisible != null)
+                {
+                    ActivateModule(firstVisible.ModuleId);
+                }
+            }
+        }
     }
+
 }

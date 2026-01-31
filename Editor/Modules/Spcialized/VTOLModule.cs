@@ -12,7 +12,7 @@ namespace UVS.Editor.Modules.Specialized
     public class VTOLModule : VehicleEditorModuleBase
     {
         #region Module Properties
-        public override string ModuleId => "vtol";
+        public override string ModuleId => "VTOL";
         public override string DisplayName => "VTOL Systems";
         public override int Priority => 60;
         public override bool RequiresVehicle => true;
@@ -20,6 +20,15 @@ namespace UVS.Editor.Modules.Specialized
         public override bool IsConstructionModule => false;
         public override bool IsTankModule => false;
         public override bool IsVTOLModule => true;
+
+        public override bool CanActivateWithConfig(VehicleConfig config)
+        {
+            if (config == null) return false;
+
+            return config.vehicleType == VehicleConfig.VehicleType.Air &&
+                   config.airCategory == VehicleConfig.AirVehicleCategory.Specialized &&
+                   config.specializedAir == VehicleConfig.SpecializedAirVehicleType.VTOL;
+        }
 
         #endregion
 

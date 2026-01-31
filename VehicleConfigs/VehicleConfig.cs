@@ -9,16 +9,59 @@ public class VehicleConfig : ScriptableObject
     public GameObject prefabReference;
     public string id;
     public string vehicleName;
-    public string authorname;
+    public string authorName;
 
     // ============ VEHICLE CLASSIFICATION ============
     [Header("Vehicle Classification")]
     public VehicleType vehicleType = VehicleType.Land;
-    public string vehicleCategory = "Standard"; // Stored as string for flexibility
-    public string specializedType = ""; // Empty if not specialized
 
-    // Helper properties for type-safe access
-    public bool IsSpecialized => !string.IsNullOrEmpty(specializedType);
+    // Category enums - only one used based on vehicleType
+    public LandVehicleCategory landCategory = LandVehicleCategory.Standard;
+    public AirVehicleCategory airCategory = AirVehicleCategory.Standard;
+    public WaterVehicleCategory waterCategory = WaterVehicleCategory.Standard;
+    public SpaceVehicleCategory spaceCategory = SpaceVehicleCategory.Standard;
+
+    // Specialized enums - only used if category is "Specialized"
+    public SpecializedLandVehicleType specializedLand = SpecializedLandVehicleType.Construction;
+    public SpecializedAirVehicleType specializedAir = SpecializedAirVehicleType.VTOL;
+
+    // Helper properties
+    public bool IsSpecialized
+    {
+        get
+        {
+            return vehicleType switch
+            {
+                VehicleType.Land => landCategory == LandVehicleCategory.Specialized,
+                VehicleType.Air => airCategory == AirVehicleCategory.Specialized,
+                _ => false
+            };
+        }
+    }
+
+    public string GetCurrentCategory()
+    {
+        return vehicleType switch
+        {
+            VehicleType.Land => landCategory.ToString(),
+            VehicleType.Air => airCategory.ToString(),
+            VehicleType.Water => waterCategory.ToString(),
+            VehicleType.Space => spaceCategory.ToString(),
+            _ => "Standard"
+        };
+    }
+
+    public string GetCurrentSpecialized()
+    {
+        if (!IsSpecialized) return "";
+
+        return vehicleType switch
+        {
+            VehicleType.Land => specializedLand.ToString(),
+            VehicleType.Air => specializedAir.ToString(),
+            _ => ""
+        };
+    }
     // ================================================
 
     // Dynamic properties storage for specialized modules
@@ -165,7 +208,7 @@ public class VehicleConfig : ScriptableObject
 
     public enum SpecializedLandVehicleType
     {
-        Construction, Tank
+        Construction, Tank, Lowrider
     }
 
     public enum SpecializedAirVehicleType
@@ -242,7 +285,6 @@ public class VehicleConfig : ScriptableObject
         public float redlineRPM = 7000f;
         public float idleRPM = 800f;
         public float engineRPM = 5000f;
-        
 
         [Header("Drivetrain")]
         public Drivetrain drivetrain = Drivetrain.RWD;
@@ -263,6 +305,26 @@ public class VehicleConfig : ScriptableObject
         }
     }
     public EngineSettings engine = new();
+
+    [Serializable]
+    public class Lowrider
+    {
+        public bool enableHydraulics = false;
+        public float hopForce = 5000f;
+        public float slamForce = 8000f;
+        public float tiltSpeed = 2000f;
+        public bool enableDanceMode = false;
+        public float danceSpeed = 1.0f;
+        public float danceHeight = 0.5f;
+        public float bounceAmplitude = 0.2f;
+        public float bounceFrequency = 2.0f;
+        public int springCoilCount;
+        public bool showCoiledSprings;
+        public float maxTiltAngle = 30f;
+        public float springThickness;
+        public Color springColor;
+    }
+    public Lowrider lowrider = new();
 
     // Turbo System
     [Serializable]
@@ -494,17 +556,14 @@ public class VehicleConfig : ScriptableObject
     /// </summary>
     public T GetCategoryEnum<T>() where T : Enum
     {
-        if (string.IsNullOrEmpty(vehicleCategory))
-            return default;
-
-        try
+        return vehicleType switch
         {
-            return (T)Enum.Parse(typeof(T), vehicleCategory);
-        }
-        catch
-        {
-            return default;
-        }
+            VehicleType.Land when typeof(T) == typeof(LandVehicleCategory) => (T)(object)landCategory,
+            VehicleType.Air when typeof(T) == typeof(AirVehicleCategory) => (T)(object)airCategory,
+            VehicleType.Water when typeof(T) == typeof(WaterVehicleCategory) => (T)(object)waterCategory,
+            VehicleType.Space when typeof(T) == typeof(SpaceVehicleCategory) => (T)(object)spaceCategory,
+            _ => default
+        };
     }
 
     /// <summary>
@@ -512,7 +571,14 @@ public class VehicleConfig : ScriptableObject
     /// </summary>
     public void SetCategoryEnum<T>(T categoryValue) where T : Enum
     {
-        vehicleCategory = categoryValue.ToString();
+        if (typeof(T) == typeof(LandVehicleCategory))
+            landCategory = (LandVehicleCategory)(object)categoryValue;
+        else if (typeof(T) == typeof(AirVehicleCategory))
+            airCategory = (AirVehicleCategory)(object)categoryValue;
+        else if (typeof(T) == typeof(WaterVehicleCategory))
+            waterCategory = (WaterVehicleCategory)(object)categoryValue;
+        else if (typeof(T) == typeof(SpaceVehicleCategory))
+            spaceCategory = (SpaceVehicleCategory)(object)categoryValue;
     }
 
     /// <summary>
@@ -520,17 +586,12 @@ public class VehicleConfig : ScriptableObject
     /// </summary>
     public T GetSpecializedEnum<T>() where T : Enum
     {
-        if (string.IsNullOrEmpty(specializedType))
-            return default;
-
-        try
+        return vehicleType switch
         {
-            return (T)Enum.Parse(typeof(T), specializedType);
-        }
-        catch
-        {
-            return default;
-        }
+            VehicleType.Land when typeof(T) == typeof(SpecializedLandVehicleType) => (T)(object)specializedLand,
+            VehicleType.Air when typeof(T) == typeof(SpecializedAirVehicleType) => (T)(object)specializedAir,
+            _ => default
+        };
     }
 
     /// <summary>
@@ -538,7 +599,10 @@ public class VehicleConfig : ScriptableObject
     /// </summary>
     public void SetSpecializedEnum<T>(T specializedValue) where T : Enum
     {
-        specializedType = specializedValue.ToString();
+        if (typeof(T) == typeof(SpecializedLandVehicleType))
+            specializedLand = (SpecializedLandVehicleType)(object)specializedValue;
+        else if (typeof(T) == typeof(SpecializedAirVehicleType))
+            specializedAir = (SpecializedAirVehicleType)(object)specializedValue;
     }
 
     /// <summary>
@@ -547,8 +611,8 @@ public class VehicleConfig : ScriptableObject
     public bool MatchesClassification(VehicleType type, string category = null, string specialized = null)
     {
         if (vehicleType != type) return false;
-        if (category != null && vehicleCategory != category) return false;
-        if (specialized != null && specializedType != specialized) return false;
+        if (category != null && GetCurrentCategory() != category) return false;
+        if (specialized != null && GetCurrentSpecialized() != specialized) return false;
         return true;
     }
     // ======================================================

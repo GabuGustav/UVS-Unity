@@ -18,6 +18,12 @@ namespace UVS.Editor.Modules.Specialized
         public override string DisplayName => "Damage & Deformation";
         public override int Priority => 80;
         public override bool RequiresVehicle => true;
+
+        public override bool CanActivateWithConfig(VehicleConfig config)
+        {
+            // Deformation available for all vehicle types
+            return config != null;
+        }
         #endregion
 
         #region UI Fields
