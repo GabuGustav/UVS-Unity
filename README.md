@@ -1,6 +1,3 @@
-Important to Note: The vehicle category may refuse to save to config. If thi happens, Just navigate to Assets/VehicleConfig and find your VehicleConfig for your car and change from there. 
-I am working on th sue as of now along with other smaller issues.
-
 HOW TO USE:
 
 1. Go to releases and download the latest or oldest Unity Package. Or alternatively, download the code directly from here.
