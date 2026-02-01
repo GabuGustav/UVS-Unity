@@ -20,6 +20,13 @@ namespace UVS.Editor.Core
         public IVehiclePreview Current => _current;
         public Mode mode => _mode;
 
+        // ============ FIX: Initialize on construction ============
+        public VehiclePreviewManager()
+        {
+            Rebuild(); // This was missing!
+        }
+        // =========================================================
+
         public void SetMode(Mode newMode)
         {
             if (_mode == newMode) return;
@@ -50,10 +57,18 @@ namespace UVS.Editor.Core
                 : new VehiclePreview3D_Builtin();
 
             _lastPipeline = GraphicsSettings.currentRenderPipeline;
+
+            // ============ ADD DEBUG LOG ============
+            UnityEngine.Debug.Log($"[PREVIEW] Rebuilt preview system: {(_current != null ? _current.GetType().Name : "NULL")} (Mode: {_mode}, URP: {useURP})");
+            // =======================================
         }
 
         public void SetVehicle(GameObject prefab)
         {
+            // ============ ADD DEBUG LOG ============
+            UnityEngine.Debug.Log($"[PREVIEW] SetVehicle called on manager, _current is {(_current != null ? "VALID" : "NULL")}");
+            // =======================================
+
             _current?.SetVehicle(prefab);
         }
 

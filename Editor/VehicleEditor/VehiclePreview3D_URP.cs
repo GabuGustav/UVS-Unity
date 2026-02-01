@@ -105,6 +105,7 @@ namespace UVS.Editor.Core
             _instance.hideFlags = HideFlags.HideAndDontSave;
 
             SceneManager.MoveGameObjectToScene(_instance, _previewScene);
+            _preview.AddSingleGO(_instance);
 
             // 🔧 URP MATERIAL SAFETY (preview-only)
             foreach (var r in _instance.GetComponentsInChildren<Renderer>())

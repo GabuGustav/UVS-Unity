@@ -74,9 +74,37 @@ namespace UVS.Editor
             _context.OnLogError += _console.LogError;
             _context.OnValidationRequired += ValidateAllModules;
 
-            // ============ ADD THIS ============
             _context.OnConfigChanged += OnContextConfigChanged;
-            // ==================================
+
+            _context.OnPrefabChanged += OnPrefabChanged;
+            _context.OnConfigChanged += OnConfigChangedForPreview;
+
+        }
+
+        private void OnPrefabChanged(GameObject prefab)
+        {
+            Debug.Log($"[PREVIEW] OnPrefabChanged: {(prefab != null ? prefab.name : "NULL")}");
+
+            if (prefab != null)
+            {
+                SetPreviewVehicle(prefab);
+            }
+            else
+            {
+                // Clear preview
+                _previewManager?.SetVehicle(null);
+                _previewContainer?.MarkDirtyRepaint();
+            }
+        }
+
+        private void OnConfigChangedForPreview(VehicleConfig config)
+        {
+            Debug.Log($"[PREVIEW] OnConfigChangedForPreview: {(config != null ? config.id : "NULL")}");
+
+            if (config != null && config.prefabReference != null)
+            {
+                SetPreviewVehicle(config.prefabReference);
+            }
         }
 
         private void LoadRegistryAndConfigs()
@@ -380,6 +408,8 @@ namespace UVS.Editor
                 // ============ ADD THIS ============
                 if (_context != null)
                 {
+                    _context.OnConfigChanged -= OnConfigChangedForPreview;
+                    _context.OnPrefabChanged -= OnPrefabChanged;
                     _context.OnConfigChanged -= OnContextConfigChanged;
                 }
                 // ==================================
@@ -465,6 +495,7 @@ namespace UVS.Editor
 
         public void SetPreviewVehicle(GameObject vehicle)
         {
+            Debug.Log($"[PREVIEW] SetPreviewVehicle called with: {(vehicle != null ? vehicle.name : "NULL")}");
             _previewManager.SetVehicle(vehicle);
             _previewContainer?.MarkDirtyRepaint();
         }
