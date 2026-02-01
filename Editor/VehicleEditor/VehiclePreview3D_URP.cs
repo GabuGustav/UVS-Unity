@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_URP
+
+using UnityEngine;
 using UnityEditor;
 using UnityEngine.SceneManagement;
 using UnityEditor.SceneManagement;
@@ -45,7 +47,7 @@ namespace UVS.Editor.Core
             _preview.camera.backgroundColor = Color.gray;
             _preview.camera.forceIntoRenderTexture = true;
 
-            // 🔴 REQUIRED FOR URP (THIS IS THE CORE FIX)
+            // Required for URP — tells the camera how to render in the preview
             if (!_preview.camera.TryGetComponent<UniversalAdditionalCameraData>(out var camData))
                 camData = _preview.camera.gameObject.AddComponent<UniversalAdditionalCameraData>();
 
@@ -54,7 +56,7 @@ namespace UVS.Editor.Core
             camData.requiresColorOption = CameraOverrideOption.On;
             camData.requiresDepthOption = CameraOverrideOption.On;
 
-            // Lighting (URP DOES NOT AUTO-INFER THIS)
+            // Lighting (URP does not auto-infer this)
             _preview.lights[0].intensity = 1.3f;
             _preview.lights[0].transform.rotation = Quaternion.Euler(45f, -30f, 0f);
 
@@ -105,9 +107,11 @@ namespace UVS.Editor.Core
             _instance.hideFlags = HideFlags.HideAndDontSave;
 
             SceneManager.MoveGameObjectToScene(_instance, _previewScene);
+
+            // Register the vehicle with PreviewRenderUtility so it actually renders
             _preview.AddSingleGO(_instance);
 
-            // 🔧 URP MATERIAL SAFETY (preview-only)
+            // URP material safety — swap any leftover Standard shaders to URP/Lit
             foreach (var r in _instance.GetComponentsInChildren<Renderer>())
             {
                 foreach (var mat in r.sharedMaterials)
@@ -234,3 +238,5 @@ namespace UVS.Editor.Core
         }
     }
 }
+
+#endif

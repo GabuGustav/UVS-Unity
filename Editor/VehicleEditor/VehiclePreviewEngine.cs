@@ -1,6 +1,8 @@
 ﻿using UnityEngine;
 using UnityEngine.Rendering;
+#if UNITY_URP
 using UnityEngine.Rendering.Universal;
+#endif
 
 namespace UVS.Editor.Core
 {
@@ -20,12 +22,10 @@ namespace UVS.Editor.Core
         public IVehiclePreview Current => _current;
         public Mode mode => _mode;
 
-        // ============ FIX: Initialize on construction ============
         public VehiclePreviewManager()
         {
-            Rebuild(); // This was missing!
+            Rebuild();
         }
-        // =========================================================
 
         public void SetMode(Mode newMode)
         {
@@ -48,27 +48,32 @@ namespace UVS.Editor.Core
         {
             Cleanup();
 
-            bool useURP =
+            bool useURP = false;
+
+#if UNITY_URP
+            useURP =
                 _mode == Mode.URP ||
                 (_mode == Mode.Auto && GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset);
+#endif
+            // If URP is not installed, useURP stays false regardless of Mode setting.
+            // Mode.URP selected by the user but package missing → silently falls back to Built-in.
 
+#if UNITY_URP
             _current = useURP
                 ? new VehiclePreview3D_URP()
                 : new VehiclePreview3D_Builtin();
+#else
+            _current = new VehiclePreview3D_Builtin();
+#endif
 
             _lastPipeline = GraphicsSettings.currentRenderPipeline;
 
-            // ============ ADD DEBUG LOG ============
             UnityEngine.Debug.Log($"[PREVIEW] Rebuilt preview system: {(_current != null ? _current.GetType().Name : "NULL")} (Mode: {_mode}, URP: {useURP})");
-            // =======================================
         }
 
         public void SetVehicle(GameObject prefab)
         {
-            // ============ ADD DEBUG LOG ============
             UnityEngine.Debug.Log($"[PREVIEW] SetVehicle called on manager, _current is {(_current != null ? "VALID" : "NULL")}");
-            // =======================================
-
             _current?.SetVehicle(prefab);
         }
 

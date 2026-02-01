@@ -68,7 +68,6 @@ namespace UVS.Editor.Core
             // cleanup previous preview instance (but keep previewUtility)
             if (_previewInstance != null)
             {
-                _previewUtility?.Cleanup();
                 UnityEngine.Object.DestroyImmediate(_previewInstance);
                 _previewInstance = null;
             }
