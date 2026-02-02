@@ -130,19 +130,20 @@ public class VehicleController : MonoBehaviour
 
         // Torque (positive always, sign from gear)
         currentMotorTorque = 0f;
-        if (wantFwd && Gear >= 2)
+        
+        // Only apply motor torque if NOT actively braking or handbraking
+        bool isBraking = (brake > 0.1f && !wantRev) || handbrake;
+        
+        if (!isBraking)
         {
-            currentMotorTorque = accel * eng.torque * torqueMultiplier;
-        }
-        else if (wantRev && Gear == 0)
-        {
-            currentMotorTorque = brake * eng.torque * torqueMultiplier * reverseTorqueMultiplier;
-        }
-
-        // Kill motor torque if braking or handbrake (except in reverse accel)
-        if ((brake > 0.1f && !wantRev) || handbrake)
-        {
-            currentMotorTorque = 0f;
+            if (wantFwd && Gear >= 2)
+            {
+                currentMotorTorque = accel * eng.torque * torqueMultiplier;
+            }
+            else if (wantRev && Gear == 0)
+            {
+                currentMotorTorque = brake * eng.torque * torqueMultiplier * reverseTorqueMultiplier;
+            }
         }
 
         // Engine braking / drag
@@ -154,9 +155,9 @@ public class VehicleController : MonoBehaviour
         }
         rb.linearVelocity *= drag;
 
-        // Brakes - ONLY when NOT reversing accel
+        // Brakes - Apply brake torque when braking (but not when reversing)
         currentBrakeTorque = 0f;
-        if (!wantRev || Gear != 0)
+        if (brake > 0.1f && !wantRev)
         {
             currentBrakeTorque = brake * brk.frontDiscDiameter * brakeStrengthMultiplier;
         }
