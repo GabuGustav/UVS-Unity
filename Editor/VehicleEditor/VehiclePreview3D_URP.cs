@@ -39,13 +39,16 @@ namespace UVS.Editor.Core
 
         private void Initialize()
         {
-            _preview = new PreviewRenderUtility(true);
+            // Create preview scene FIRST before PreviewRenderUtility
+            _previewScene = EditorSceneManager.NewPreviewScene();
+
+            _preview = new PreviewRenderUtility(true, true);
             _preview.camera.fieldOfView = 30f;
             _preview.camera.nearClipPlane = 0.05f;
             _preview.camera.farClipPlane = 500f;
-            _preview.camera.clearFlags = CameraClearFlags.Skybox;
-            _preview.camera.backgroundColor = Color.gray;
-            _preview.camera.forceIntoRenderTexture = true;
+            _preview.camera.clearFlags = CameraClearFlags.SolidColor;
+            _preview.camera.backgroundColor = new Color(0.2f, 0.2f, 0.2f, 1f);
+            _preview.camera.scene = _previewScene;
 
             // Required for URP — tells the camera how to render in the preview
             if (!_preview.camera.TryGetComponent<UniversalAdditionalCameraData>(out var camData))
@@ -56,6 +59,12 @@ namespace UVS.Editor.Core
             camData.requiresColorOption = CameraOverrideOption.On;
             camData.requiresDepthOption = CameraOverrideOption.On;
 
+            // Move lights to preview scene so they actually illuminate objects
+            foreach (var light in _preview.lights)
+            {
+                SceneManager.MoveGameObjectToScene(light.gameObject, _previewScene);
+            }
+
             // Lighting (URP does not auto-infer this)
             _preview.lights[0].intensity = 1.3f;
             _preview.lights[0].transform.rotation = Quaternion.Euler(45f, -30f, 0f);
@@ -65,11 +74,6 @@ namespace UVS.Editor.Core
                 _preview.lights[1].intensity = 0.8f;
                 _preview.lights[1].transform.rotation = Quaternion.Euler(-35f, 140f, 0f);
             }
-
-            RenderSettings.ambientMode = AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.45f, 0.45f, 0.45f);
-
-            _previewScene = EditorSceneManager.NewPreviewScene();
         }
 
         // ------------------------------------------------------------
@@ -176,7 +180,11 @@ namespace UVS.Editor.Core
                 PositionCamera();
 
             _preview.BeginPreview(rect, GUIStyle.none);
-            _preview.Render(true);
+            
+            // Ensure camera is rendering the correct scene
+            _preview.camera.scene = _previewScene;
+            
+            _preview.Render(true, true);
             Texture tex = _preview.EndPreview();
 
             if (tex != null)
