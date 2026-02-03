@@ -1,5 +1,6 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Linq;
 
 [RequireComponent(typeof(Rigidbody))]
 public class VehicleController : MonoBehaviour
@@ -16,51 +17,52 @@ public class VehicleController : MonoBehaviour
     [Header("Tuning")]
     [Range(0.1f, 1f)] public float steeringSmoothness = 0.2f;
     public float reverseTorqueMultiplier = 0.7f;
-    public float torqueMultiplier = 10f;         // Increased default - crank higher if needed (15-20)
-    public float brakeStrengthMultiplier = 200f; // Increased for stronger brakes
-    public float handbrakeMultiplier = 400f;     // Stronger handbrake
-    public float holdingBrakeTorque = 100f;      // Tune this for wheel stop (50-200)
+    public float torqueMultiplier = 12f;
+    public float brakeStrengthMultiplier = 200f;
+    public float handbrakeMultiplier = 400f;
+    public float holdingBrakeTorque = 120f;
 
     [Header("Transmission")]
     public bool isAutomatic = true;
-    public int Gear { get; private set; } = 1; // 0 = R, 1 = N, 2+ = forward
+    public int Gear { get; private set; } = 1; // 0=R, 1=N, 2+=D
     private float[] gearRatios;
     public float engineRPM;
     private float wheelRPM;
 
     private Rigidbody rb;
     private WheelCollider[] wheels;
+
     private float currentMotorTorque;
     private float currentBrakeTorque;
     private float currentSteerAngle;
-    private float steerInput;
     private float currentSteerLerp;
     private float shiftTimer;
+
     private const float SHIFT_COOLDOWN = 0.35f;
-    private const float RPM_LERP = 10f;
+    private const float RPM_LERP = 8f;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
         wheels = GetComponentsInChildren<WheelCollider>();
+
         if (config == null)
         {
             enabled = false;
-            Debug.LogError("No VehicleConfig!");
+            Debug.LogError("VehicleConfig missing!");
             return;
         }
 
         rb.mass = config.body.mass;
         rb.centerOfMass = config.body.centerOfMassOffset;
 
-        var susp = config.suspension;
         foreach (var w in wheels)
         {
             var spring = w.suspensionSpring;
-            spring.spring = susp.springStiffness;
-            spring.damper = susp.damperStiffness;
+            spring.spring = config.suspension.springStiffness;
+            spring.damper = config.suspension.damperStiffness;
             w.suspensionSpring = spring;
-            w.suspensionDistance = susp.suspensionDistance;
+            w.suspensionDistance = config.suspension.suspensionDistance;
         }
 
         BuildGearRatios();
@@ -71,18 +73,6 @@ public class VehicleController : MonoBehaviour
         handbrakeAction.Enable();
     }
 
-    private void BuildGearRatios()
-    {
-        var trans = config.transmission;
-        gearRatios = new float[trans.gearCount + 2];
-        gearRatios[0] = trans.reverseGearRatio;
-        gearRatios[1] = 0f;
-        for (int i = 0; i < trans.gearCount; i++)
-        {
-            gearRatios[i + 2] = (i < trans.gearRatios.Length) ? trans.gearRatios[i] : 1f;
-        }
-    }
-
     private void OnDestroy()
     {
         accelerateAction.Disable();
@@ -91,189 +81,180 @@ public class VehicleController : MonoBehaviour
         handbrakeAction.Disable();
     }
 
+    private void BuildGearRatios()
+    {
+        var t = config.transmission;
+        gearRatios = new float[t.gearCount + 2];
+        gearRatios[0] = -Mathf.Abs(t.reverseGearRatio); // Reverse
+        gearRatios[1] = 0f;                             // Neutral
+
+        for (int i = 0; i < t.gearCount; i++)
+            gearRatios[i + 2] = t.gearRatios[i];
+    }
+
     private void FixedUpdate()
     {
-        if (config == null) return;
-
         float accel = accelerateAction.ReadValue<float>();
         float brake = brakeAction.ReadValue<float>();
-        steerInput = steerAction.ReadValue<float>();
+        float steerInput = steerAction.ReadValue<float>();
         bool handbrake = handbrakeAction.IsPressed();
 
-        var eng = config.engine;
-        var brk = config.brakes;
-        var trans = config.transmission;
-        var steer = config.steering;
-
         float fwdSpeed = Vector3.Dot(rb.linearVelocity, transform.forward);
-        bool nearlyStopped = Mathf.Abs(fwdSpeed) < 1.5f;
-        bool movingFwd = fwdSpeed > 0.5f;
-        bool movingRev = fwdSpeed < -0.5f;
+        bool nearlyStopped = Mathf.Abs(fwdSpeed) < 1.2f;
 
-        bool wantFwd = accel > 0.1f;
-        bool wantRev = brake > 0.1f && !wantFwd;
+        bool wantForward = accel > 0.1f;
+        bool wantReverse = brake > 0.1f && !wantForward && nearlyStopped;
 
-        // Gear shift for direction when stopped
-        if (nearlyStopped)
+        // Direction shift only when stopped
+        if (nearlyStopped && shiftTimer <= 0f)
         {
-            if (wantRev && Gear != 0)
+            if (wantReverse && Gear != 0)
             {
                 Gear = 0;
                 shiftTimer = SHIFT_COOLDOWN;
             }
-            else if (wantFwd && Gear < 2)
+            else if (wantForward && Gear < 2)
             {
                 Gear = 2;
                 shiftTimer = SHIFT_COOLDOWN;
             }
         }
 
-        // Torque (positive always, sign from gear)
+        if (shiftTimer > 0f)
+            shiftTimer -= Time.fixedDeltaTime;
+
+        // Motor torque
         currentMotorTorque = 0f;
-        if (wantFwd && Gear >= 2)
+        if (!handbrake && brake < 0.01f)
         {
-            currentMotorTorque = accel * eng.torque * torqueMultiplier;
-        }
-        else if (wantRev && Gear == 0)
-        {
-            currentMotorTorque = brake * eng.torque * torqueMultiplier * reverseTorqueMultiplier;
-        }
-
-        // Kill motor torque if braking or handbrake (except in reverse accel)
-        if ((brake > 0.1f && !wantRev) || handbrake)
-        {
-            currentMotorTorque = 0f;
+            if (Gear >= 2 && wantForward)
+                currentMotorTorque = accel * config.engine.torque * torqueMultiplier;
+            else if (Gear == 0 && brake > 0.1f)
+                currentMotorTorque = brake * config.engine.torque * torqueMultiplier * reverseTorqueMultiplier;
         }
 
-        // Engine braking / drag
-        float engBrake = eng.torque * 0.08f;
-        float drag = 0.995f;
-        if (currentMotorTorque == 0f)
+        // Engine braking ONLY when in gear
+        if (currentMotorTorque == 0f && Gear != 1)
         {
-            currentMotorTorque = movingFwd ? -engBrake : (movingRev ? engBrake : 0f);
+            float engBrake = config.engine.torque * 0.06f;
+            currentMotorTorque = Mathf.Sign(-fwdSpeed) * engBrake;
         }
-        rb.linearVelocity *= drag;
 
-        // Brakes - ONLY when NOT reversing accel
-        currentBrakeTorque = 0f;
-        if (!wantRev || Gear != 0)
-        {
-            currentBrakeTorque = brake * brk.frontDiscDiameter * brakeStrengthMultiplier;
-        }
+        // Brakes
+        currentBrakeTorque = brake * config.brakes.frontDiscDiameter * brakeStrengthMultiplier;
+
         if (handbrake)
-        {
-            currentBrakeTorque = Mathf.Max(currentBrakeTorque, brk.rearDiscDiameter * handbrakeMultiplier);
-        }
+            currentBrakeTorque = Mathf.Max(currentBrakeTorque,
+                config.brakes.rearDiscDiameter * handbrakeMultiplier);
 
-        // Stronger holding brake when stopped or handbrake
-        if ((Mathf.Abs(fwdSpeed) < 0.6f && accel < 0.05f && brake < 0.05f) || handbrake)
-        {
+        if (nearlyStopped && accel < 0.05f && brake < 0.05f)
             currentBrakeTorque = Mathf.Max(currentBrakeTorque, holdingBrakeTorque);
-        }
 
         // Steering
-        float targetSteer = steerInput * steer.maxSteeringAngle;
+        float targetSteer = steerInput * config.steering.maxSteeringAngle;
         currentSteerLerp = Mathf.Lerp(currentSteerLerp, targetSteer, steeringSmoothness);
         currentSteerAngle = currentSteerLerp;
 
-        // RPM calc & auto shift
-        CalculateRPM(eng.drivetrain);
+        CalculateRPM();
         if (isAutomatic && Gear >= 2)
-        {
-            HandleAutoShift(trans);
-        }
+            HandleAutoShift();
 
-        ApplyMotorTorque(eng.drivetrain);
+        ApplyMotorTorque();
         ApplySteering();
-        ApplyBrakes(handbrake, brk.brakeBias);
-
-        // Debug velocity (m/s)
-        Debug.Log("Car Velocity: " + rb.linearVelocity.magnitude.ToString("F2") + " m/s");
+        ApplyBrakes(handbrake);
     }
 
-    private void CalculateRPM(VehicleConfig.EngineSettings.Drivetrain dt)
+    private void CalculateRPM()
     {
-        float avgRPM = 0f;
+        float sum = 0f;
         int count = 0;
+
         foreach (var w in wheels)
         {
-            if (IsPowered(w, dt))
+            if (IsPowered(w))
             {
-                avgRPM += w.rpm;
+                sum += Mathf.Abs(w.rpm);
                 count++;
             }
         }
-        wheelRPM = count > 0 ? avgRPM / count : 0f;
 
-        float gearR = Mathf.Abs(GetGearRatio());
-        float finalR = config.transmission.finalDriveRatio > 0 ? config.transmission.finalDriveRatio : 3.8f;
-        engineRPM = Mathf.Lerp(engineRPM, Mathf.Abs(wheelRPM) * gearR * finalR, Time.fixedDeltaTime * RPM_LERP);
+        wheelRPM = count > 0 ? sum / count : 0f;
 
-        if (currentMotorTorque < 1f && rb.linearVelocity.magnitude < 2f)
-            engineRPM = Mathf.Lerp(engineRPM, config.engine.idleRPM, Time.fixedDeltaTime * 6f);
+        float gear = Mathf.Abs(GetGearRatio());
+        float finalDrive = config.transmission.finalDriveRatio;
+        engineRPM = Mathf.Lerp(engineRPM, wheelRPM * gear * finalDrive, Time.fixedDeltaTime * RPM_LERP);
+
+        if (Gear == 1 || rb.linearVelocity.magnitude < 1f)
+            engineRPM = Mathf.Lerp(engineRPM, config.engine.idleRPM, Time.fixedDeltaTime * 5f);
 
         engineRPM = Mathf.Clamp(engineRPM, config.engine.idleRPM, config.engine.redlineRPM);
     }
 
-    private void HandleAutoShift(VehicleConfig.TransmissionSettings trans)
+    private void HandleAutoShift()
     {
-        if (shiftTimer > 0f)
-        {
-            shiftTimer -= Time.fixedDeltaTime;
-            return;
-        }
+        if (shiftTimer > 0f) return;
 
-        if (engineRPM > config.engine.redlineRPM * 0.92f && Gear < trans.gearCount + 1)
+        if (engineRPM > config.engine.redlineRPM * 0.92f &&
+            Gear < config.transmission.gearCount + 1)
         {
             Gear++;
             shiftTimer = SHIFT_COOLDOWN;
         }
-        else if (engineRPM < config.engine.idleRPM * 2.5f && Gear > 2)
+        else if (engineRPM < config.engine.idleRPM * 2.2f && Gear > 2)
         {
             Gear--;
             shiftTimer = SHIFT_COOLDOWN;
         }
     }
 
-    private float GetGearRatio() => Gear < gearRatios.Length ? gearRatios[Gear] : 1f;
-
-    private void ApplyMotorTorque(VehicleConfig.EngineSettings.Drivetrain dt)
+    private float GetGearRatio()
     {
-        float effTorque = currentMotorTorque * Mathf.Abs(GetGearRatio()) * config.transmission.finalDriveRatio;
-        int powered = dt == VehicleConfig.EngineSettings.Drivetrain.AWD ? wheels.Length : 2;
-
-        foreach (var w in wheels)
-        {
-            bool p = IsPowered(w, dt);
-            w.motorTorque = p ? effTorque / powered * Mathf.Sign(GetGearRatio()) : 0f;
-        }
+        return Gear < gearRatios.Length ? gearRatios[Gear] : 0f;
     }
 
-    private bool IsPowered(WheelCollider w, VehicleConfig.EngineSettings.Drivetrain dt)
+    private void ApplyMotorTorque()
+    {
+        float ratio = GetGearRatio();
+        if (Mathf.Approximately(ratio, 0f)) return;
+
+        float effTorque = currentMotorTorque * Mathf.Abs(ratio) * config.transmission.finalDriveRatio;
+        var poweredWheels = wheels.Where(IsPowered).ToArray();
+        int count = poweredWheels.Length;
+
+        foreach (var w in wheels)
+            w.motorTorque = poweredWheels.Contains(w) ? effTorque / count * Mathf.Sign(ratio) : 0f;
+    }
+
+    private bool IsPowered(WheelCollider w)
     {
         float z = w.transform.localPosition.z;
-        return dt == VehicleConfig.EngineSettings.Drivetrain.AWD ||
-               (dt == VehicleConfig.EngineSettings.Drivetrain.FWD && z > 0) ||
-               (dt == VehicleConfig.EngineSettings.Drivetrain.RWD && z <= 0);
+        return config.engine.drivetrain switch
+        {
+            VehicleConfig.EngineSettings.Drivetrain.AWD => true,
+            VehicleConfig.EngineSettings.Drivetrain.FWD => z > 0,
+            VehicleConfig.EngineSettings.Drivetrain.RWD => z <= 0,
+            _ => false
+        };
     }
 
     private void ApplySteering()
     {
         foreach (var w in wheels)
-        {
             if (w.transform.localPosition.z > 0)
                 w.steerAngle = currentSteerAngle;
-        }
     }
 
-    private void ApplyBrakes(bool hb, float bias)
+    private void ApplyBrakes(bool handbrake)
     {
+        float bias = config.brakes.brakeBias;
+
         foreach (var w in wheels)
         {
-            float b = (w.transform.localPosition.z > 0) ? bias : 1f - bias;
-            w.brakeTorque = currentBrakeTorque * b;
-            if (hb && w.transform.localPosition.z <= 0)
-                w.brakeTorque *= 1.8f; // Extra rear lock
+            bool front = w.transform.localPosition.z > 0;
+            w.brakeTorque = currentBrakeTorque * (front ? bias : 1f - bias);
+
+            if (handbrake && !front)
+                w.brakeTorque *= 1.8f;
         }
     }
 }

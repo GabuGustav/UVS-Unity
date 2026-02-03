@@ -472,9 +472,21 @@ namespace UVS.Editor.Modules
 
         private void UpdateGenerateButton()
         {
+            // If this prefab already has a permanent ID, button stays off. No exceptions.
+            bool alreadyRegistered = false;
+            if (_context.SelectedPrefab != null)
+            {
+                string path = AssetDatabase.GetAssetPath(_context.SelectedPrefab);
+                string guid = AssetDatabase.AssetPathToGUID(path);
+                alreadyRegistered = _context.GuidToConfigMap.ContainsKey(guid) ||
+                                    _context.Registry.PrefabHasConfig(_context.SelectedPrefab);
+            }
+
             bool valid = _context.SelectedPrefab != null &&
                         _typeField.value != null &&
-                        _seedField.value.Trim().Length == 3;
+                        _seedField.value.Trim().Length == 3 &&
+                        !alreadyRegistered;
+
             _generateIDButton.SetEnabled(valid);
         }
 
@@ -488,6 +500,29 @@ namespace UVS.Editor.Modules
 
             string assetPath = AssetDatabase.GetAssetPath(_context.SelectedPrefab);
             string prefabGuid = AssetDatabase.AssetPathToGUID(assetPath);
+
+            // ── PERMANENT ID GUARD ──────────────────────────────────
+            // Check in-memory map first (fast)
+            if (_context.GuidToConfigMap.TryGetValue(prefabGuid, out var existingFromMap))
+            {
+                LogError($"This vehicle already has a permanent ID: {existingFromMap.id}. IDs cannot be regenerated.");
+                _idLabel.text = existingFromMap.id;
+                _idLabel.style.color = Color.green;
+                _generateIDButton.SetEnabled(false);
+                return;
+            }
+            // Check registry on disk (catches cases after editor reload)
+            if (_context.Registry.PrefabHasConfig(_context.SelectedPrefab))
+            {
+                var existingFromRegistry = _context.Registry.GetConfigForPrefab(_context.SelectedPrefab);
+                string existingId = existingFromRegistry != null ? existingFromRegistry.id : "unknown";
+                LogError($"This vehicle already has a permanent ID: {existingId}. IDs cannot be regenerated.");
+                _idLabel.text = existingId;
+                _idLabel.style.color = Color.green;
+                _generateIDButton.SetEnabled(false);
+                return;
+            }
+            // ────────────────────────────────────────────────────────
 
             var type = (VehicleConfig.VehicleType)_typeField.value;
             string prefix = type.ToString()[0].ToString();

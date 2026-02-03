@@ -18,6 +18,7 @@ namespace UVS.Editor.Core
         private IVehiclePreview _current;
         private Mode _mode = Mode.Auto;
         private RenderPipelineAsset _lastPipeline;
+        private GameObject _currentVehicle; // Preserve vehicle across renderer switches
 
         public IVehiclePreview Current => _current;
         public Mode mode => _mode;
@@ -69,10 +70,18 @@ namespace UVS.Editor.Core
             _lastPipeline = GraphicsSettings.currentRenderPipeline;
 
             UnityEngine.Debug.Log($"[PREVIEW] Rebuilt preview system: {(_current != null ? _current.GetType().Name : "NULL")} (Mode: {_mode}, URP: {useURP})");
+
+            // Reapply the vehicle to the new renderer
+            if (_currentVehicle != null)
+            {
+                _current?.SetVehicle(_currentVehicle);
+                UnityEngine.Debug.Log($"[PREVIEW] Reapplied vehicle '{_currentVehicle.name}' to new renderer");
+            }
         }
 
         public void SetVehicle(GameObject prefab)
         {
+            _currentVehicle = prefab; // Cache for Rebuild
             UnityEngine.Debug.Log($"[PREVIEW] SetVehicle called on manager, _current is {(_current != null ? "VALID" : "NULL")}");
             _current?.SetVehicle(prefab);
         }
