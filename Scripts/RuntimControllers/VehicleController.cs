@@ -148,11 +148,18 @@ public class VehicleController : MonoBehaviour
         // Engine braking / drag
         float engBrake = eng.torque * 0.08f;
         float drag = 0.995f;
-        if (currentMotorTorque == 0f)
+        
+        // Only apply engine braking if vehicle is actually moving (not nearly stopped)
+        if (currentMotorTorque == 0f && !nearlyStopped)
         {
             currentMotorTorque = movingFwd ? -engBrake : (movingRev ? engBrake : 0f);
         }
-        rb.linearVelocity *= drag;
+        
+        // Apply velocity drag only when moving
+        if (!nearlyStopped)
+        {
+            rb.linearVelocity *= drag;
+        }
 
         // Brakes - ONLY when NOT reversing accel
         currentBrakeTorque = 0f;
@@ -166,9 +173,12 @@ public class VehicleController : MonoBehaviour
         }
 
         // Stronger holding brake when stopped or handbrake
-        if ((Mathf.Abs(fwdSpeed) < 0.6f && accel < 0.05f && brake < 0.05f) || handbrake)
+        bool holdingStill = Mathf.Abs(fwdSpeed) < 0.6f && accel < 0.05f && brake < 0.05f;
+        if (holdingStill || handbrake)
         {
             currentBrakeTorque = Mathf.Max(currentBrakeTorque, holdingBrakeTorque);
+            // Zero out motor torque completely when holding still to prevent wheel rotation
+            currentMotorTorque = 0f;
         }
 
         // Steering
