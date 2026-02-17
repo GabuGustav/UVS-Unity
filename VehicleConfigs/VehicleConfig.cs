@@ -64,124 +64,304 @@ public class VehicleConfig : ScriptableObject
     }
     // ================================================
 
-    // Dynamic properties storage for specialized modules
+    // Dynamic properties storage for specialized modules (serialized + cached)
+    [SerializeField] private List<DynamicProperty> _dynamicPropertyEntries = new();
+    private readonly Dictionary<string, DynamicProperty> _dynamicPropertyMap = new();
     private readonly Dictionary<string, object> _dynamicProperties = new();
+
+#if UNITY_EDITOR
+    public static event Action<VehicleConfig> OnConfigValidated;
+#endif
+
+    private void OnEnable()
+    {
+        RebuildDynamicPropertyMap();
+    }
+
+    private void OnValidate()
+    {
+        RebuildDynamicPropertyMap();
+#if UNITY_EDITOR
+        OnConfigValidated?.Invoke(this);
+#endif
+    }
+
+    [Serializable]
+    public class DynamicProperty
+    {
+        public string key;
+        public DynamicPropertyType type;
+
+        public float floatValue;
+        public int intValue;
+        public bool boolValue;
+        public string stringValue;
+        public Vector3 vector3Value;
+        public Color colorValue;
+
+        public string enumType;
+        public string enumValue;
+    }
+
+    public enum DynamicPropertyType
+    {
+        Float,
+        Int,
+        Bool,
+        String,
+        Enum,
+        Vector3,
+        Color
+    }
+
+    private void RebuildDynamicPropertyMap()
+    {
+        _dynamicPropertyMap.Clear();
+        if (_dynamicPropertyEntries == null)
+            _dynamicPropertyEntries = new List<DynamicProperty>();
+
+        foreach (var entry in _dynamicPropertyEntries)
+        {
+            if (entry == null || string.IsNullOrEmpty(entry.key)) continue;
+            _dynamicPropertyMap[entry.key] = entry;
+
+            switch (entry.type)
+            {
+                case DynamicPropertyType.Float: _dynamicProperties[entry.key] = entry.floatValue; break;
+                case DynamicPropertyType.Int: _dynamicProperties[entry.key] = entry.intValue; break;
+                case DynamicPropertyType.Bool: _dynamicProperties[entry.key] = entry.boolValue; break;
+                case DynamicPropertyType.String: _dynamicProperties[entry.key] = entry.stringValue; break;
+                case DynamicPropertyType.Vector3: _dynamicProperties[entry.key] = entry.vector3Value; break;
+                case DynamicPropertyType.Color: _dynamicProperties[entry.key] = entry.colorValue; break;
+                case DynamicPropertyType.Enum: _dynamicProperties[entry.key] = entry.enumValue; break;
+            }
+        }
+    }
+
+    private DynamicProperty GetOrCreate(string key, DynamicPropertyType type)
+    {
+        if (_dynamicPropertyMap.TryGetValue(key, out var entry))
+        {
+            entry.type = type;
+            return entry;
+        }
+
+        entry = new DynamicProperty { key = key, type = type };
+        _dynamicPropertyEntries.Add(entry);
+        _dynamicPropertyMap[key] = entry;
+        return entry;
+    }
+
+    private bool TryGetEntry(string key, DynamicPropertyType type, out DynamicProperty entry)
+    {
+        if (_dynamicPropertyMap.TryGetValue(key, out entry))
+        {
+            // Allow read even if type mismatches (will just ignore if incompatible)
+            return true;
+        }
+        return false;
+    }
+
+    private void MarkDirty()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorUtility.SetDirty(this);
+#endif
+    }
 
     #region Helper Methods for Modules
 
     // Float helpers
     public void SetFloat(string key, float value)
     {
+        var entry = GetOrCreate(key, DynamicPropertyType.Float);
+        entry.floatValue = value;
         _dynamicProperties[key] = value;
+        MarkDirty();
     }
 
     public float GetFloat(string key, float defaultValue = 0f)
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is float floatValue)
             return floatValue;
+        if (TryGetEntry(key, DynamicPropertyType.Float, out var entry))
+        {
+            _dynamicProperties[key] = entry.floatValue;
+            return entry.floatValue;
+        }
         return defaultValue;
     }
 
     // Int helpers
     public void SetInt(string key, int value)
     {
+        var entry = GetOrCreate(key, DynamicPropertyType.Int);
+        entry.intValue = value;
         _dynamicProperties[key] = value;
+        MarkDirty();
     }
 
     public int GetInt(string key, int defaultValue = 0)
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is int intValue)
             return intValue;
+        if (TryGetEntry(key, DynamicPropertyType.Int, out var entry))
+        {
+            _dynamicProperties[key] = entry.intValue;
+            return entry.intValue;
+        }
         return defaultValue;
     }
 
     // Bool helpers
     public void SetBool(string key, bool value)
     {
+        var entry = GetOrCreate(key, DynamicPropertyType.Bool);
+        entry.boolValue = value;
         _dynamicProperties[key] = value;
+        MarkDirty();
     }
 
     public bool GetBool(string key, bool defaultValue = false)
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is bool boolValue)
             return boolValue;
+        if (TryGetEntry(key, DynamicPropertyType.Bool, out var entry))
+        {
+            _dynamicProperties[key] = entry.boolValue;
+            return entry.boolValue;
+        }
         return defaultValue;
     }
 
     // String helpers
     public void SetString(string key, string value)
     {
+        var entry = GetOrCreate(key, DynamicPropertyType.String);
+        entry.stringValue = value;
         _dynamicProperties[key] = value;
+        MarkDirty();
     }
 
     public string GetString(string key, string defaultValue = "")
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is string stringValue)
             return stringValue;
+        if (TryGetEntry(key, DynamicPropertyType.String, out var entry))
+        {
+            _dynamicProperties[key] = entry.stringValue;
+            return entry.stringValue;
+        }
         return defaultValue;
     }
 
     // Enum helpers
     public void SetEnum<T>(string key, T value) where T : Enum
     {
+        var entry = GetOrCreate(key, DynamicPropertyType.Enum);
+        entry.enumType = typeof(T).AssemblyQualifiedName;
+        entry.enumValue = value.ToString();
         _dynamicProperties[key] = value;
+        MarkDirty();
     }
 
     public T GetEnum<T>(string key, T defaultValue) where T : Enum
     {
-        if (_dynamicProperties.TryGetValue(key, out object value) && value is T enumValue)
-            return enumValue;
+        if (_dynamicProperties.TryGetValue(key, out object value))
+        {
+            if (value is T enumValue)
+                return enumValue;
+            if (value is string enumString && Enum.TryParse(typeof(T), enumString, true, out object parsedFromString))
+            {
+                var parsed = (T)parsedFromString;
+                _dynamicProperties[key] = parsed;
+                return parsed;
+            }
+        }
+        if (TryGetEntry(key, DynamicPropertyType.Enum, out var entry) &&
+            !string.IsNullOrEmpty(entry.enumValue) &&
+            Enum.TryParse(typeof(T), entry.enumValue, true, out object parsedFromEntry))
+        {
+            var parsed = (T)parsedFromEntry;
+            _dynamicProperties[key] = parsed;
+            return parsed;
+        }
         return defaultValue;
     }
 
     // Vector3 helpers
     public void SetVector3(string key, Vector3 value)
     {
+        var entry = GetOrCreate(key, DynamicPropertyType.Vector3);
+        entry.vector3Value = value;
         _dynamicProperties[key] = value;
+        MarkDirty();
     }
 
     public Vector3 GetVector3(string key, Vector3 defaultValue)
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is Vector3 vectorValue)
             return vectorValue;
+        if (TryGetEntry(key, DynamicPropertyType.Vector3, out var entry))
+        {
+            _dynamicProperties[key] = entry.vector3Value;
+            return entry.vector3Value;
+        }
         return defaultValue;
     }
 
     // Color helpers
     public void SetColor(string key, Color value)
     {
+        var entry = GetOrCreate(key, DynamicPropertyType.Color);
+        entry.colorValue = value;
         _dynamicProperties[key] = value;
+        MarkDirty();
     }
 
     public Color GetColor(string key, Color defaultValue)
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is Color colorValue)
             return colorValue;
+        if (TryGetEntry(key, DynamicPropertyType.Color, out var entry))
+        {
+            _dynamicProperties[key] = entry.colorValue;
+            return entry.colorValue;
+        }
         return defaultValue;
     }
 
     // Check if property exists
     public bool HasProperty(string key)
     {
-        return _dynamicProperties.ContainsKey(key);
+        return _dynamicPropertyMap.ContainsKey(key) || _dynamicProperties.ContainsKey(key);
     }
 
     // Remove property
     public void RemoveProperty(string key)
     {
         _dynamicProperties.Remove(key);
+        if (_dynamicPropertyMap.TryGetValue(key, out var entry))
+        {
+            _dynamicPropertyEntries.Remove(entry);
+            _dynamicPropertyMap.Remove(key);
+        }
+        MarkDirty();
     }
 
     // Clear all dynamic properties
     public void ClearDynamicProperties()
     {
         _dynamicProperties.Clear();
+        _dynamicPropertyEntries.Clear();
+        _dynamicPropertyMap.Clear();
+        MarkDirty();
     }
 
     // Get all property keys
     public IEnumerable<string> GetAllPropertyKeys()
     {
-        return _dynamicProperties.Keys;
+        return _dynamicPropertyMap.Keys;
     }
 
     #endregion
@@ -365,6 +545,54 @@ public class VehicleConfig : ScriptableObject
         public float suspensionDistance = 0.3f;
     }
     public SuspensionSettings suspension = new();
+
+    // Physics (aircraft and construction-focused)
+    [Serializable]
+    public class AirplanePhysicsSettings
+    {
+        public float wingArea = 20f;
+        public float liftCoefficient = 1.2f;
+        public float dragCoefficient = 0.03f;
+        public float maxThrust = 50000f;
+        public float stallSpeed = 25f;
+        public float maxBankAngle = 60f;
+        public float pitchStability = 0.6f;
+        public float rollStability = 0.6f;
+        public float yawStability = 0.6f;
+        public float controlSurfaceEffectiveness = 1.0f;
+    }
+    public AirplanePhysicsSettings airplanePhysics = new();
+
+    [Serializable]
+    public class HelicopterPhysicsSettings
+    {
+        public int rotorCount = 1;
+        public float mainRotorDiameter = 10f;
+        public float tailRotorDiameter = 1.6f;
+        public float collectivePitchRange = 15f;
+        public float cyclicResponse = 1.0f;
+        public float torqueCompensation = 1.0f;
+        public float hoverEfficiency = 0.8f;
+        public float maxClimbRate = 8f;
+        public float maxDescentRate = 6f;
+        public float maxForwardSpeed = 60f;
+        public float maxYawRate = 90f;
+    }
+    public HelicopterPhysicsSettings helicopterPhysics = new();
+
+    [Serializable]
+    public class ConstructionPhysicsSettings
+    {
+        public float tractionCoefficient = 1.2f;
+        public float stabilityAssist = 0.5f;
+        public float maxSlopeAngle = 25f;
+        public float weightDistributionFront = 0.55f;
+        public float hydraulicForceMultiplier = 1.0f;
+        public float groundPressureLimit = 300f;
+        public float suspensionCompliance = 0.5f;
+        public bool enableOutriggerPhysics = true;
+    }
+    public ConstructionPhysicsSettings constructionPhysics = new();
 
     // Body
     [Serializable]

@@ -213,6 +213,7 @@ namespace UVS.Editor.Modules
 
             // Notify context that config changed (triggers module visibility updates)
             _context.NotifyConfigChanged(_context.CurrentConfig);
+            VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
         }
 
         private void ResetCategoryToStandard(VehicleConfig.VehicleType type)
@@ -266,6 +267,7 @@ namespace UVS.Editor.Modules
 
                         // Notify modules to update visibility
                         _context.NotifyConfigChanged(_context.CurrentConfig);
+                        VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
                     });
                     break;
 
@@ -279,6 +281,7 @@ namespace UVS.Editor.Modules
 
                         RebuildSpecializedField();
                         _context.NotifyConfigChanged(_context.CurrentConfig);
+                        VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
                     });
                     break;
 
@@ -291,6 +294,7 @@ namespace UVS.Editor.Modules
                         EditorUtility.SetDirty(_context.CurrentConfig);
 
                         _context.NotifyConfigChanged(_context.CurrentConfig);
+                        VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
                     });
                     break;
 
@@ -303,6 +307,7 @@ namespace UVS.Editor.Modules
                         EditorUtility.SetDirty(_context.CurrentConfig);
 
                         _context.NotifyConfigChanged(_context.CurrentConfig);
+                        VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
                     });
                     break;
 
@@ -347,6 +352,7 @@ namespace UVS.Editor.Modules
 
                         // Notify modules to update visibility
                         _context.NotifyConfigChanged(_context.CurrentConfig);
+                        VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
                     });
                     break;
 
