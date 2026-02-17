@@ -35,10 +35,12 @@ namespace UVS.Editor.Core
 
         private void Initialize()
         {
-            _previewUtility = new PreviewRenderUtility();
+            _previewUtility = new PreviewRenderUtility(true, true);
             _previewUtility.camera.fieldOfView = 35f;
             _previewUtility.camera.nearClipPlane = 0.01f;
             _previewUtility.camera.farClipPlane = 1000f;
+            _previewUtility.camera.clearFlags = CameraClearFlags.SolidColor;
+            _previewUtility.camera.backgroundColor = new Color(0.2f, 0.2f, 0.2f, 1f);
             _previewUtility.ambientColor = new Color(0.25f, 0.25f, 0.3f);
 
             // lights
@@ -105,7 +107,9 @@ namespace UVS.Editor.Core
             _previewUtility.camera.transform.SetPositionAndRotation(pos, rot);
 
             _previewUtility.BeginPreview(previewRect, GUIStyle.none);
-            _previewUtility.Render();
+            
+            // Render with skybox and fog enabled for proper scene rendering
+            _previewUtility.Render(true, true);
 
             if (_previewInstance == null)
                 DrawGrid();
