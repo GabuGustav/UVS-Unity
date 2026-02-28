@@ -1,15 +1,19 @@
 using UnityEngine;
 using System;
 using System.Collections.Generic;
+using UVS.Shared;
 
 [CreateAssetMenu(menuName = "UVS/Vehicle Config")]
 public class VehicleConfig : ScriptableObject
 {
     public string prefabGuid;
     public GameObject prefabReference;
+    public VehicleInputProfile inputProfileOverride;
     public string id;
+    public List<string> legacyIds = new();
     public string vehicleName;
     public string authorName;
+    public VehicleClassificationData classification = new();
 
     // ============ VEHICLE CLASSIFICATION ============
     [Header("Vehicle Classification")]
@@ -20,10 +24,20 @@ public class VehicleConfig : ScriptableObject
     public AirVehicleCategory airCategory = AirVehicleCategory.Standard;
     public WaterVehicleCategory waterCategory = WaterVehicleCategory.Standard;
     public SpaceVehicleCategory spaceCategory = SpaceVehicleCategory.Standard;
+    public RailVehicleCategory railCategory = RailVehicleCategory.Train;
 
     // Specialized enums - only used if category is "Specialized"
     public SpecializedLandVehicleType specializedLand = SpecializedLandVehicleType.Construction;
     public SpecializedAirVehicleType specializedAir = SpecializedAirVehicleType.VTOL;
+
+    [Serializable]
+    public class VehicleClassificationData
+    {
+        public string typeId = "land";
+        public string categoryId = "standard";
+        public string subcategoryId = "";
+        public List<string> tags = new();
+    }
 
     // Helper properties
     public bool IsSpecialized
@@ -47,6 +61,7 @@ public class VehicleConfig : ScriptableObject
             VehicleType.Air => airCategory.ToString(),
             VehicleType.Water => waterCategory.ToString(),
             VehicleType.Space => spaceCategory.ToString(),
+            VehicleType.Rail => railCategory.ToString(),
             _ => "Standard"
         };
     }
@@ -64,304 +79,124 @@ public class VehicleConfig : ScriptableObject
     }
     // ================================================
 
-    // Dynamic properties storage for specialized modules (serialized + cached)
-    [SerializeField] private List<DynamicProperty> _dynamicPropertyEntries = new();
-    private readonly Dictionary<string, DynamicProperty> _dynamicPropertyMap = new();
+    // Dynamic properties storage for specialized modules
     private readonly Dictionary<string, object> _dynamicProperties = new();
-
-#if UNITY_EDITOR
-    public static event Action<VehicleConfig> OnConfigValidated;
-#endif
-
-    private void OnEnable()
-    {
-        RebuildDynamicPropertyMap();
-    }
-
-    private void OnValidate()
-    {
-        RebuildDynamicPropertyMap();
-#if UNITY_EDITOR
-        OnConfigValidated?.Invoke(this);
-#endif
-    }
-
-    [Serializable]
-    public class DynamicProperty
-    {
-        public string key;
-        public DynamicPropertyType type;
-
-        public float floatValue;
-        public int intValue;
-        public bool boolValue;
-        public string stringValue;
-        public Vector3 vector3Value;
-        public Color colorValue;
-
-        public string enumType;
-        public string enumValue;
-    }
-
-    public enum DynamicPropertyType
-    {
-        Float,
-        Int,
-        Bool,
-        String,
-        Enum,
-        Vector3,
-        Color
-    }
-
-    private void RebuildDynamicPropertyMap()
-    {
-        _dynamicPropertyMap.Clear();
-        if (_dynamicPropertyEntries == null)
-            _dynamicPropertyEntries = new List<DynamicProperty>();
-
-        foreach (var entry in _dynamicPropertyEntries)
-        {
-            if (entry == null || string.IsNullOrEmpty(entry.key)) continue;
-            _dynamicPropertyMap[entry.key] = entry;
-
-            switch (entry.type)
-            {
-                case DynamicPropertyType.Float: _dynamicProperties[entry.key] = entry.floatValue; break;
-                case DynamicPropertyType.Int: _dynamicProperties[entry.key] = entry.intValue; break;
-                case DynamicPropertyType.Bool: _dynamicProperties[entry.key] = entry.boolValue; break;
-                case DynamicPropertyType.String: _dynamicProperties[entry.key] = entry.stringValue; break;
-                case DynamicPropertyType.Vector3: _dynamicProperties[entry.key] = entry.vector3Value; break;
-                case DynamicPropertyType.Color: _dynamicProperties[entry.key] = entry.colorValue; break;
-                case DynamicPropertyType.Enum: _dynamicProperties[entry.key] = entry.enumValue; break;
-            }
-        }
-    }
-
-    private DynamicProperty GetOrCreate(string key, DynamicPropertyType type)
-    {
-        if (_dynamicPropertyMap.TryGetValue(key, out var entry))
-        {
-            entry.type = type;
-            return entry;
-        }
-
-        entry = new DynamicProperty { key = key, type = type };
-        _dynamicPropertyEntries.Add(entry);
-        _dynamicPropertyMap[key] = entry;
-        return entry;
-    }
-
-    private bool TryGetEntry(string key, DynamicPropertyType type, out DynamicProperty entry)
-    {
-        if (_dynamicPropertyMap.TryGetValue(key, out entry))
-        {
-            // Allow read even if type mismatches (will just ignore if incompatible)
-            return true;
-        }
-        return false;
-    }
-
-    private void MarkDirty()
-    {
-#if UNITY_EDITOR
-        UnityEditor.EditorUtility.SetDirty(this);
-#endif
-    }
 
     #region Helper Methods for Modules
 
     // Float helpers
     public void SetFloat(string key, float value)
     {
-        var entry = GetOrCreate(key, DynamicPropertyType.Float);
-        entry.floatValue = value;
         _dynamicProperties[key] = value;
-        MarkDirty();
     }
 
     public float GetFloat(string key, float defaultValue = 0f)
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is float floatValue)
             return floatValue;
-        if (TryGetEntry(key, DynamicPropertyType.Float, out var entry))
-        {
-            _dynamicProperties[key] = entry.floatValue;
-            return entry.floatValue;
-        }
         return defaultValue;
     }
 
     // Int helpers
     public void SetInt(string key, int value)
     {
-        var entry = GetOrCreate(key, DynamicPropertyType.Int);
-        entry.intValue = value;
         _dynamicProperties[key] = value;
-        MarkDirty();
     }
 
     public int GetInt(string key, int defaultValue = 0)
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is int intValue)
             return intValue;
-        if (TryGetEntry(key, DynamicPropertyType.Int, out var entry))
-        {
-            _dynamicProperties[key] = entry.intValue;
-            return entry.intValue;
-        }
         return defaultValue;
     }
 
     // Bool helpers
     public void SetBool(string key, bool value)
     {
-        var entry = GetOrCreate(key, DynamicPropertyType.Bool);
-        entry.boolValue = value;
         _dynamicProperties[key] = value;
-        MarkDirty();
     }
 
     public bool GetBool(string key, bool defaultValue = false)
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is bool boolValue)
             return boolValue;
-        if (TryGetEntry(key, DynamicPropertyType.Bool, out var entry))
-        {
-            _dynamicProperties[key] = entry.boolValue;
-            return entry.boolValue;
-        }
         return defaultValue;
     }
 
     // String helpers
     public void SetString(string key, string value)
     {
-        var entry = GetOrCreate(key, DynamicPropertyType.String);
-        entry.stringValue = value;
         _dynamicProperties[key] = value;
-        MarkDirty();
     }
 
     public string GetString(string key, string defaultValue = "")
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is string stringValue)
             return stringValue;
-        if (TryGetEntry(key, DynamicPropertyType.String, out var entry))
-        {
-            _dynamicProperties[key] = entry.stringValue;
-            return entry.stringValue;
-        }
         return defaultValue;
     }
 
     // Enum helpers
     public void SetEnum<T>(string key, T value) where T : Enum
     {
-        var entry = GetOrCreate(key, DynamicPropertyType.Enum);
-        entry.enumType = typeof(T).AssemblyQualifiedName;
-        entry.enumValue = value.ToString();
         _dynamicProperties[key] = value;
-        MarkDirty();
     }
 
     public T GetEnum<T>(string key, T defaultValue) where T : Enum
     {
-        if (_dynamicProperties.TryGetValue(key, out object value))
-        {
-            if (value is T enumValue)
-                return enumValue;
-            if (value is string enumString && Enum.TryParse(typeof(T), enumString, true, out object parsedFromString))
-            {
-                var parsed = (T)parsedFromString;
-                _dynamicProperties[key] = parsed;
-                return parsed;
-            }
-        }
-        if (TryGetEntry(key, DynamicPropertyType.Enum, out var entry) &&
-            !string.IsNullOrEmpty(entry.enumValue) &&
-            Enum.TryParse(typeof(T), entry.enumValue, true, out object parsedFromEntry))
-        {
-            var parsed = (T)parsedFromEntry;
-            _dynamicProperties[key] = parsed;
-            return parsed;
-        }
+        if (_dynamicProperties.TryGetValue(key, out object value) && value is T enumValue)
+            return enumValue;
         return defaultValue;
     }
 
     // Vector3 helpers
     public void SetVector3(string key, Vector3 value)
     {
-        var entry = GetOrCreate(key, DynamicPropertyType.Vector3);
-        entry.vector3Value = value;
         _dynamicProperties[key] = value;
-        MarkDirty();
     }
 
     public Vector3 GetVector3(string key, Vector3 defaultValue)
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is Vector3 vectorValue)
             return vectorValue;
-        if (TryGetEntry(key, DynamicPropertyType.Vector3, out var entry))
-        {
-            _dynamicProperties[key] = entry.vector3Value;
-            return entry.vector3Value;
-        }
         return defaultValue;
     }
 
     // Color helpers
     public void SetColor(string key, Color value)
     {
-        var entry = GetOrCreate(key, DynamicPropertyType.Color);
-        entry.colorValue = value;
         _dynamicProperties[key] = value;
-        MarkDirty();
     }
 
     public Color GetColor(string key, Color defaultValue)
     {
         if (_dynamicProperties.TryGetValue(key, out object value) && value is Color colorValue)
             return colorValue;
-        if (TryGetEntry(key, DynamicPropertyType.Color, out var entry))
-        {
-            _dynamicProperties[key] = entry.colorValue;
-            return entry.colorValue;
-        }
         return defaultValue;
     }
 
     // Check if property exists
     public bool HasProperty(string key)
     {
-        return _dynamicPropertyMap.ContainsKey(key) || _dynamicProperties.ContainsKey(key);
+        return _dynamicProperties.ContainsKey(key);
     }
 
     // Remove property
     public void RemoveProperty(string key)
     {
         _dynamicProperties.Remove(key);
-        if (_dynamicPropertyMap.TryGetValue(key, out var entry))
-        {
-            _dynamicPropertyEntries.Remove(entry);
-            _dynamicPropertyMap.Remove(key);
-        }
-        MarkDirty();
     }
 
     // Clear all dynamic properties
     public void ClearDynamicProperties()
     {
         _dynamicProperties.Clear();
-        _dynamicPropertyEntries.Clear();
-        _dynamicPropertyMap.Clear();
-        MarkDirty();
     }
 
     // Get all property keys
     public IEnumerable<string> GetAllPropertyKeys()
     {
-        return _dynamicPropertyMap.Keys;
+        return _dynamicProperties.Keys;
     }
 
     #endregion
@@ -384,7 +219,8 @@ public class VehicleConfig : ScriptableObject
         Transmission, Door, Turbo
     }
 
-    public enum VehicleType { Land, Air, Water, Space, Fictional }
+    public enum VehicleType { Land, Air, Water, Rail, Space, Fictional }
+    public enum VehicleDriveModel { Realistic, Arcade }
 
     public enum SpecializedLandVehicleType
     {
@@ -401,6 +237,7 @@ public class VehicleConfig : ScriptableObject
         Sedan, SUV, Truck, Motorcycle, SportsCar,
         OffRoad, Bus, Van, Coupe, Convertible,
         Hatchback, Wagon, Electric,
+        Articulated_Truck, Semi_Truck, Tractor,
         Standard, Classic, Specialized
     }
 
@@ -420,6 +257,11 @@ public class VehicleConfig : ScriptableObject
     {
         Shuttle, Rover, Satellite, SpaceStation, Fighter,
         Standard, Spaceship
+    }
+    
+    public enum RailVehicleCategory
+    {
+        Train, Tram, Metro, Standard
     }
 
     // General vehicle measurements
@@ -450,8 +292,18 @@ public class VehicleConfig : ScriptableObject
         public Vector3 localPosition;
         public bool isPowered;
         public bool isSteering;
+        public WheelRole role = WheelRole.Free;
     }
     public List<WheelSettings> wheels = new();
+
+    public enum WheelRole
+    {
+        FrontSteer,
+        RearDrive,
+        TrackLeft,
+        TrackRight,
+        Free
+    }
 
     // Engine
     [Serializable]
@@ -493,6 +345,11 @@ public class VehicleConfig : ScriptableObject
         public float hopForce = 5000f;
         public float slamForce = 8000f;
         public float tiltSpeed = 2000f;
+        public float maxLiftHeight = 0.6f;
+        public float maxVerticalVelocity = 4f;
+        public float liftSpring = 1200f;
+        public float liftDamping = 200f;
+        public float maxHopImpulsePerSecond = 12000f;
         public bool enableDanceMode = false;
         public float danceSpeed = 1.0f;
         public float danceHeight = 0.5f;
@@ -546,53 +403,141 @@ public class VehicleConfig : ScriptableObject
     }
     public SuspensionSettings suspension = new();
 
-    // Physics (aircraft and construction-focused)
     [Serializable]
-    public class AirplanePhysicsSettings
+    public class DrivingAssistSettings
     {
-        public float wingArea = 20f;
-        public float liftCoefficient = 1.2f;
-        public float dragCoefficient = 0.03f;
-        public float maxThrust = 50000f;
-        public float stallSpeed = 25f;
-        public float maxBankAngle = 60f;
-        public float pitchStability = 0.6f;
-        public float rollStability = 0.6f;
-        public float yawStability = 0.6f;
-        public float controlSurfaceEffectiveness = 1.0f;
+        public float stopAssistSpeed = 1.2f;
+        public float spinKillBrakeTorque = 1200f;
+        public float rpmStopThreshold = 5f;
+
+        public float reverseEngageSpeed = 1.2f;
+        public float reverseExitSpeed = 2.0f;
+
+        public bool autoFlipEnabled = true;
+        public float flipMaxSpeed = 2.5f;
+        public float flipAngleThreshold = 120f;
+        public float flipTorque = 1800f;
+        public float flipCooldown = 3f;
     }
-    public AirplanePhysicsSettings airplanePhysics = new();
+    public DrivingAssistSettings drivingAssist = new();
+
+    [Header("Drive Model")]
+    public VehicleDriveModel driveModel = VehicleDriveModel.Realistic;
 
     [Serializable]
-    public class HelicopterPhysicsSettings
+    public class ArticulationSettings
     {
-        public int rotorCount = 1;
-        public float mainRotorDiameter = 10f;
-        public float tailRotorDiameter = 1.6f;
-        public float collectivePitchRange = 15f;
-        public float cyclicResponse = 1.0f;
-        public float torqueCompensation = 1.0f;
-        public float hoverEfficiency = 0.8f;
-        public float maxClimbRate = 8f;
-        public float maxDescentRate = 6f;
-        public float maxForwardSpeed = 60f;
-        public float maxYawRate = 90f;
+        public Transform tractorHitch;
+        public Transform trailerHitch;
+        public float hitchYawLimit = 35f;
+        public float hitchDamping = 8f;
+        public float hitchSpring = 40f;
+        public bool detachable = false;
     }
-    public HelicopterPhysicsSettings helicopterPhysics = new();
+    public ArticulationSettings articulation = new();
 
     [Serializable]
-    public class ConstructionPhysicsSettings
+    public class TrailerSettings
     {
-        public float tractionCoefficient = 1.2f;
-        public float stabilityAssist = 0.5f;
-        public float maxSlopeAngle = 25f;
-        public float weightDistributionFront = 0.55f;
-        public float hydraulicForceMultiplier = 1.0f;
-        public float groundPressureLimit = 300f;
-        public float suspensionCompliance = 0.5f;
-        public bool enableOutriggerPhysics = true;
+        public bool hasTrailer = false;
+        public bool poweredTrailer = false;
+        public float trailerMass = 2500f;
+        public float trailerBrakeStrength = 600f;
     }
-    public ConstructionPhysicsSettings constructionPhysics = new();
+    public TrailerSettings trailer = new();
+
+    [Serializable]
+    public class TrainSettings
+    {
+        public float maxSpeed = 30f;
+        public float accel = 6f;
+        public float brake = 10f;
+        public float trackGauge = 1.435f;
+        public bool useSignals = true;
+    }
+    public TrainSettings train = new();
+
+    [Serializable]
+    public class TrafficAISettings
+    {
+        public DriverProfile profile;
+        public float targetSpeed = 14f;
+        public float followDistance = 10f;
+        public float laneChangeCooldown = 3f;
+    }
+    public TrafficAISettings trafficAI = new();
+
+    [Serializable]
+    public class TrackDriveSettings
+    {
+        public float trackTorqueMultiplier = 12f;
+        public float trackBrakeStrength = 250f;
+        [Range(0f, 1f)] public float steerBlend = 0.6f;
+        public float trackDifferentialStrength = 0.8f;
+        public float maxTrackSpeed = 25f;
+        public float trackDrag = 0.15f;
+    }
+    public TrackDriveSettings trackDrive = new();
+
+    [Serializable]
+    public class SeatSettings
+    {
+        public bool allowMultipleOccupants = true;
+        public bool allowPassengerInput = false;
+        public int maxOccupants = 4;
+        public float enterDistance = 2.5f;
+        public float exitDistance = 2.5f;
+        public float seatSwapCooldown = 0.5f;
+    }
+    public SeatSettings seatSettings = new();
+
+    [Serializable]
+    public class MultiplayerSettings
+    {
+        public bool enableLocalSplitScreen = true;
+        public int localMaxPlayers = 4;
+        public bool allowSharedVehicleOccupancy = true;
+        public bool enableOnline = false;
+        public string onlineProviderId = "ngo";
+    }
+    public MultiplayerSettings multiplayer = new();
+
+    public enum WaterQualityTier
+    {
+        Low,
+        Medium,
+        High
+    }
+
+    [Serializable]
+    public class WaterRenderSettings
+    {
+        public WaterQualityTier qualityTier = WaterQualityTier.Medium;
+        public bool foamEnabled = true;
+        public bool depthColorEnabled = true;
+        public bool causticsEnabled = false;
+    }
+    public WaterRenderSettings waterRender = new();
+
+    [Serializable]
+    public class SeatAnchor
+    {
+        public string id;
+        public SeatRole role = SeatRole.Driver;
+        public Vector3 localPosition;
+        public Vector3 localEuler;
+        public Transform overrideTransform;
+        public string entrySocketId;
+        public string exitSocketId;
+    }
+
+    public enum SeatRole
+    {
+        Driver,
+        Passenger
+    }
+
+    public List<SeatAnchor> seats = new();
 
     // Body
     [Serializable]
@@ -735,6 +680,242 @@ public class VehicleConfig : ScriptableObject
     }
     public DamageSettings damage = new();
 
+    // Air physics
+    [Serializable]
+    public class AirSettings
+    {
+        [Header("Aerodynamics")]
+        public float wingArea = 20f;
+        public float liftCoefficient = 1.0f;
+        public float dragCoefficient = 0.03f;
+        public float airDensity = 1.225f;
+
+        [Header("Thrust")]
+        public float maxThrust = 20000f;
+
+        [Header("Control Torques")]
+        public float pitchTorque = 5000f;
+        public float rollTorque = 6000f;
+        public float yawTorque = 3000f;
+    }
+    public AirSettings air = new();
+
+    [Serializable]
+    public class VTOLSettings
+    {
+        [Header("Vectoring")]
+        public float thrustVectoringRange = 45f;
+        public float vectoringSpeed = 30f;
+        public bool autoVectoring = true;
+        public float vectoringResponseTime = 0.2f;
+
+        [Header("Flight Modes")]
+        public FlightMode defaultFlightMode = FlightMode.Hover;
+        public bool autoTransition = true;
+        public float transitionSpeed = 80f;
+        public float transitionAltitude = 100f;
+
+        [Header("Hover")]
+        public float hoverHeight = 15f;
+        public float hoverStability = 0.8f;
+        public bool autoHover = true;
+        public float hoverPowerRequirement = 75f;
+
+        [Header("Vertical Flight")]
+        public float verticalClimbRate = 8f;
+        public float verticalDescentRate = 5f;
+        public float maxVerticalSpeed = 15f;
+        public bool verticalStabilization = true;
+
+        [Header("Engines")]
+        public int engineCount = 4;
+        public float enginePower = 1500f;
+        public float engineResponseTime = 0.5f;
+        public bool engineSync = true;
+
+        [Header("Safety")]
+        public bool emergencyAutoLand = true;
+        public float emergencyAltitude = 50f;
+        public bool stallProtection = true;
+        public float stallSpeed = 40f;
+
+        [Header("Control")]
+        public float controlSensitivity = 1.0f;
+        public float controlDeadzone = 0.1f;
+        public bool assistedFlying = true;
+        public ControlScheme controlScheme = ControlScheme.Standard;
+    }
+    public VTOLSettings vtol = new();
+
+    [Serializable]
+    public class WaterSettings
+    {
+        [Header("Buoyancy")]
+        public float waterDensity = 1000f;
+        public float buoyancyForce = 1f;
+        public List<BuoyancyPoint> buoyancyPoints = new();
+
+        [Header("Drag")]
+        public float linearDrag = 1.5f;
+        public float angularDrag = 1f;
+
+        [Header("Propulsion")]
+        public float propulsionForce = 5000f;
+        public float turnTorque = 2000f;
+    }
+
+    [Serializable]
+    public class BuoyancyPoint
+    {
+        public Vector3 localPosition;
+        public float volume = 1f;
+        public float maxSubmersion = 1f;
+    }
+    public WaterSettings water = new();
+
+    [Serializable]
+    public class TankSettings
+    {
+        [Header("Turret")]
+        public float turretRotationSpeed = 45f;
+        public float turretElevationSpeed = 25f;
+        public float turretMaxElevation = 20f;
+        public float turretMinElevation = -10f;
+        public bool turretStabilization = true;
+
+        [Header("Armor")]
+        public int frontArmorThickness = 120;
+        public int sideArmorThickness = 80;
+        public int rearArmorThickness = 40;
+        public int turretArmorThickness = 150;
+        public ArmorType armorType = ArmorType.RolledHomogeneousSteel;
+
+        [Header("Weapon")]
+        public int mainCaliber = 120;
+        public float mainReloadTime = 8.5f;
+        public int ammoCapacity = 40;
+        public bool autoLoader = true;
+        public AmmoType ammoType = AmmoType.APFSDS;
+
+        [Header("Tracks")]
+        public float trackWidth = 0.65f;
+        public float trackLength = 4.2f;
+        public int roadWheels = 7;
+        public bool trackStabilization = true;
+
+        [Header("Crew")]
+        public int crewCount = 4;
+        public string crewPositions = "Commander, Gunner, Loader, Driver";
+        public bool crewInjurySimulation = true;
+    }
+    public TankSettings tank = new();
+
+    [Serializable]
+    public class ConstructionSettings
+    {
+        [Header("Equipment")]
+        public EquipmentType equipmentType = EquipmentType.Excavator;
+        public string equipmentModel = "CAT 320D";
+        public float operatingWeight = 22000f;
+        public float groundClearance = 450f;
+
+        [Header("Hydraulics")]
+        public float hydraulicPressure = 280f;
+        public float hydraulicFlowRate = 205f;
+        public float hydraulicResponseTime = 0.3f;
+        public bool hydraulicOverloadProtection = true;
+        public float hydraulicCoolingRate = 0.8f;
+
+        [Header("Arm")]
+        public float armLength = 6.2f;
+        public float armMaxAngle = 160f;
+        public float armMinAngle = -30f;
+        public float armExtensionSpeed = 0.8f;
+        public float armRotationSpeed = 12f;
+
+        [Header("Attachment")]
+        public float bucketCapacity = 1.2f;
+        public float bucketWidth = 1.1f;
+        public float bucketForce = 140f;
+        public AttachmentType attachmentType = AttachmentType.StandardBucket;
+        public float attachmentWeight = 850f;
+
+        [Header("Stability")]
+        public float stabilityBase = 2.8f;
+        public float stabilityMargin = 0.3f;
+        public bool autoStabilization = true;
+        public float outriggerExtension = 3.5f;
+        public bool outriggerAutoLevel = true;
+
+        [Header("Safety")]
+        public bool loadMonitoring = true;
+        public float maxLoadCapacity = 3500f;
+        public float safetyFactor = 1.5f;
+        public bool operatorPresence = true;
+        public bool emergencyStop = true;
+
+        [Header("Environment")]
+        public float operatingTemperature = 45f;
+        public float windResistance = 50f;
+        public float slopeCapability = 30f;
+        public TerrainType terrainType = TerrainType.Mixed;
+    }
+    public ConstructionSettings construction = new();
+
+    [Serializable]
+    public class DeformationSettings
+    {
+        [Header("Deformation")]
+        public bool enableDeformation = true;
+        public float deformationStrength = 1.0f;
+        public float deformationRadius = 0.5f;
+        public DeformationType deformationType = DeformationType.Mesh;
+        public float meshDetail = 0.8f;
+
+        [Header("Damage")]
+        public bool enableDamage = true;
+        public float damageThreshold = 50f;
+        public float damageMultiplier = 1.2f;
+        public DamageModel damageModel = DamageModel.Realistic;
+        public bool progressiveDamage = true;
+
+        [Header("Material")]
+        public float materialStrength = 400f;
+        public float materialDuctility = 0.6f;
+        public float materialHardness = 200f;
+        public MaterialType materialType = MaterialType.Steel;
+        public float corrosionResistance = 0.7f;
+
+        [Header("Repair")]
+        public bool enableRepair = true;
+        public float repairSpeed = 1.0f;
+        public float repairCost = 100f;
+        public RepairMethod repairMethod = RepairMethod.Welding;
+        public bool visualRepair = true;
+
+        [Header("Visual")]
+        public bool showDamage = true;
+        public Color damageColor = Color.red;
+        public float damageOpacity = 0.7f;
+        public DamageTexture damageTexture = DamageTexture.Scratches;
+        public bool particleEffects = true;
+
+        [Header("Performance")]
+        public int maxDeformations = 1000;
+        public float updateFrequency = 30f;
+        public bool lodDeformation = true;
+        public int lodLevels = 4;
+        public bool cullingOptimization = true;
+
+        [Header("Safety")]
+        public bool safetyOverride = false;
+        public float maxDeformationLimit = 0.8f;
+        public bool integrityMonitoring = true;
+        public float failureThreshold = 0.9f;
+        public bool emergencyStop = true;
+    }
+    public DeformationSettings deformation = new();
+
     // Public property for VehicleID compatibility
     public string VehicleID => id;
 
@@ -790,6 +971,7 @@ public class VehicleConfig : ScriptableObject
             VehicleType.Air when typeof(T) == typeof(AirVehicleCategory) => (T)(object)airCategory,
             VehicleType.Water when typeof(T) == typeof(WaterVehicleCategory) => (T)(object)waterCategory,
             VehicleType.Space when typeof(T) == typeof(SpaceVehicleCategory) => (T)(object)spaceCategory,
+            VehicleType.Rail when typeof(T) == typeof(RailVehicleCategory) => (T)(object)railCategory,
             _ => default
         };
     }
@@ -807,6 +989,8 @@ public class VehicleConfig : ScriptableObject
             waterCategory = (WaterVehicleCategory)(object)categoryValue;
         else if (typeof(T) == typeof(SpaceVehicleCategory))
             spaceCategory = (SpaceVehicleCategory)(object)categoryValue;
+        else if (typeof(T) == typeof(RailVehicleCategory))
+            railCategory = (RailVehicleCategory)(object)categoryValue;
     }
 
     /// <summary>
@@ -842,6 +1026,136 @@ public class VehicleConfig : ScriptableObject
         if (category != null && GetCurrentCategory() != category) return false;
         if (specialized != null && GetCurrentSpecialized() != specialized) return false;
         return true;
+    }
+
+    public void EnsureClassificationDefaults()
+    {
+        classification ??= new VehicleClassificationData();
+
+        if (string.IsNullOrWhiteSpace(classification.typeId))
+            classification.typeId = GetLegacyTypeId();
+
+        if (string.IsNullOrWhiteSpace(classification.categoryId))
+            classification.categoryId = GetLegacyCategoryId();
+
+        if (classification.typeId == "land" && landCategory == LandVehicleCategory.Specialized)
+            classification.subcategoryId = specializedLand.ToString().ToLowerInvariant();
+        else if (classification.typeId == "air" && airCategory == AirVehicleCategory.Specialized)
+            classification.subcategoryId = specializedAir.ToString().ToLowerInvariant();
+        else if (classification.subcategoryId == null)
+            classification.subcategoryId = string.Empty;
+    }
+
+    public void SyncLegacyClassificationFromIds()
+    {
+        EnsureClassificationDefaults();
+
+        string type = classification.typeId?.Trim().ToLowerInvariant();
+        switch (type)
+        {
+            case "land":
+                vehicleType = VehicleType.Land;
+                break;
+            case "air":
+                vehicleType = VehicleType.Air;
+                break;
+            case "water":
+                vehicleType = VehicleType.Water;
+                break;
+            case "space":
+                vehicleType = VehicleType.Space;
+                break;
+            case "rail":
+                vehicleType = VehicleType.Rail;
+                break;
+            case "fictional":
+                vehicleType = VehicleType.Fictional;
+                break;
+        }
+
+        string category = classification.categoryId?.Trim();
+        if (!string.IsNullOrEmpty(category))
+        {
+            if (vehicleType == VehicleType.Land &&
+                Enum.TryParse<LandVehicleCategory>(category, true, out var land))
+            {
+                landCategory = land;
+            }
+            else if (vehicleType == VehicleType.Air &&
+                Enum.TryParse<AirVehicleCategory>(category, true, out var air))
+            {
+                airCategory = air;
+            }
+            else if (vehicleType == VehicleType.Water &&
+                Enum.TryParse<WaterVehicleCategory>(category, true, out var waterCat))
+            {
+                waterCategory = waterCat;
+            }
+            else if (vehicleType == VehicleType.Space &&
+                Enum.TryParse<SpaceVehicleCategory>(category, true, out var space))
+            {
+                spaceCategory = space;
+            }
+            else if (vehicleType == VehicleType.Rail &&
+                Enum.TryParse<RailVehicleCategory>(category, true, out var rail))
+            {
+                railCategory = rail;
+            }
+        }
+
+        string subcategory = classification.subcategoryId?.Trim();
+        if (!string.IsNullOrEmpty(subcategory))
+        {
+            if (vehicleType == VehicleType.Land &&
+                Enum.TryParse<SpecializedLandVehicleType>(subcategory, true, out var landSpec))
+            {
+                specializedLand = landSpec;
+                landCategory = LandVehicleCategory.Specialized;
+            }
+            else if (vehicleType == VehicleType.Air &&
+                Enum.TryParse<SpecializedAirVehicleType>(subcategory, true, out var airSpec))
+            {
+                specializedAir = airSpec;
+                airCategory = AirVehicleCategory.Specialized;
+            }
+        }
+    }
+
+    public string GetLegacyTypeId()
+    {
+        return vehicleType switch
+        {
+            VehicleType.Land => "land",
+            VehicleType.Air => "air",
+            VehicleType.Water => "water",
+            VehicleType.Space => "space",
+            VehicleType.Rail => "rail",
+            VehicleType.Fictional => "fictional",
+            _ => "land"
+        };
+    }
+
+    public string GetLegacyCategoryId()
+    {
+        return vehicleType switch
+        {
+            VehicleType.Land => landCategory.ToString().ToLowerInvariant(),
+            VehicleType.Air => airCategory.ToString().ToLowerInvariant(),
+            VehicleType.Water => waterCategory.ToString().ToLowerInvariant(),
+            VehicleType.Space => spaceCategory.ToString().ToLowerInvariant(),
+            VehicleType.Rail => railCategory.ToString().ToLowerInvariant(),
+            VehicleType.Fictional => "standard",
+            _ => "standard"
+        };
+    }
+
+    public static string ComputeDeterministicIdFromPrefabGuid(string sourcePrefabGuid)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePrefabGuid))
+            return string.Empty;
+
+        string compact = sourcePrefabGuid.Trim().Replace("-", string.Empty).ToUpperInvariant();
+        return $"UVS-{compact}";
     }
     // ======================================================
 }

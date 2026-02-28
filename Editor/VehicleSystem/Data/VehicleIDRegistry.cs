@@ -1,13 +1,17 @@
-﻿using UnityEngine;
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using UnityEditor;
+using UnityEngine;
+using UVS.Editor.Core;
 
 [CreateAssetMenu(fileName = "VehicleIDRegistry", menuName = "Vehicles/Vehicle ID Registry", order = 0)]
 public class VehicleIDRegistry : ScriptableObject
 {
     [Header("Registry Storage")]
     [SerializeField] private List<string> registeredIDs = new();
-    
+
     [Header("Current Vehicle Info")]
     public string vehicleID;
     public string vehicleName;
@@ -16,56 +20,52 @@ public class VehicleIDRegistry : ScriptableObject
     public int seatingCapacity;
     public VehicleConfig config;
 
-    // Dual mapping: ID -> Config AND PrefabGUID -> Config
-    private readonly Dictionary<string, VehicleConfig> idToConfigMap = new();
-    private readonly Dictionary<string, VehicleConfig> prefabGuidToConfigMap = new();
+    private readonly Dictionary<string, VehicleConfig> idToConfigMap = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, VehicleConfig> prefabGuidToConfigMap = new(StringComparer.OrdinalIgnoreCase);
 
-    public void RegisterID(string vehicleID, GameObject vehiclePrefab)
+    private const string ConfigRoot = "Assets/VehicleConfigs";
+    private const string QuarantineRoot = "Assets/VehicleConfigs/_DuplicateGuidQuarantine";
+
+    [Serializable]
+    private sealed class ConfigRecord
     {
-        if (string.IsNullOrEmpty(vehicleID))
+        public VehicleConfig config;
+        public string path;
+        public string prefabGuid;
+        public DateTime createdUtc;
+    }
+
+    public void RegisterID(string ignoredVehicleID, GameObject vehiclePrefab)
+    {
+        if (vehiclePrefab == null)
         {
-            Debug.LogWarning("VehicleID is empty, cannot register.");
+            Debug.LogWarning("[UVS] RegisterID called with null prefab.");
             return;
         }
 
-        // CRITICAL: Initialize registry if maps are empty
-        if (idToConfigMap.Count == 0 && prefabGuidToConfigMap.Count == 0)
-        {
-            InitializeRegistry();
-        }
+        var cfg = GetOrCreateConfigForPrefab(vehiclePrefab);
+        if (cfg == null) return;
 
-        string prefabGuid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(vehiclePrefab));
+        EnsureDeterministicId(cfg);
+        UpsertConfig(cfg);
+        EditorUtility.SetDirty(cfg);
+        EditorUtility.SetDirty(this);
+        AssetDatabase.SaveAssets();
 
-        // Check if this prefab already has a config
-        if (prefabGuidToConfigMap.TryGetValue(prefabGuid, out VehicleConfig existingConfig))
+        Debug.Log($"[UVS] Deterministic ID ensured for '{vehiclePrefab.name}': {cfg.id}");
+    }
+
+    public void RegisterVehicle(string ignoredVehicleID, VehicleConfig vehicleConfig)
+    {
+        if (vehicleConfig == null)
         {
-            Debug.LogWarning($"Vehicle prefab '{vehiclePrefab.name}' is already registered with ID: {existingConfig.id}");
+            Debug.LogWarning("[UVS] RegisterVehicle called with null config.");
             return;
         }
 
-        // Check if this ID is already used
-        if (idToConfigMap.ContainsKey(vehicleID))
-        {
-            Debug.LogWarning($"VehicleID '{vehicleID}' is already in use!");
-            return;
-        }
+        EnsureDeterministicId(vehicleConfig);
+        UpsertConfig(vehicleConfig);
 
-        // Find or create the config for this vehicle using prefab GUID
-        VehicleConfig vehicleConfig = FindOrCreateConfigForPrefab(vehiclePrefab, prefabGuid);
-
-        // Set the ID and update both mappings
-        vehicleConfig.id = vehicleID;
-        idToConfigMap.Add(vehicleID, vehicleConfig);
-        prefabGuidToConfigMap[prefabGuid] = vehicleConfig;
-
-        if (!registeredIDs.Contains(vehicleID))
-        {
-            registeredIDs.Add(vehicleID);
-        }
-
-        Debug.Log($"Registered VehicleID: {vehicleID} for {vehiclePrefab.name}");
-
-        // Mark both config and registry as dirty to save changes
         EditorUtility.SetDirty(vehicleConfig);
         EditorUtility.SetDirty(this);
         AssetDatabase.SaveAssets();
@@ -73,31 +73,39 @@ public class VehicleIDRegistry : ScriptableObject
 
     public bool ContainsID(string id)
     {
-        return idToConfigMap.ContainsKey(id);
+        if (idToConfigMap.Count == 0)
+            InitializeRegistry();
+
+        return !string.IsNullOrWhiteSpace(id) && idToConfigMap.ContainsKey(id);
+    }
+
+    public bool TryGetByPrefabGuid(string guid, out VehicleConfig vehicleConfig)
+    {
+        if (prefabGuidToConfigMap.Count == 0)
+            InitializeRegistry();
+
+        return prefabGuidToConfigMap.TryGetValue(guid ?? string.Empty, out vehicleConfig);
     }
 
     public VehicleConfig GetConfigForID(string id)
     {
-        if (idToConfigMap.TryGetValue(id, out VehicleConfig config))
-        {
-            return config;
-        }
+        if (ContainsID(id))
+            return idToConfigMap[id];
         return null;
     }
 
     public VehicleConfig GetConfigForPrefabGuid(string prefabGuid)
     {
-        if (prefabGuidToConfigMap.TryGetValue(prefabGuid, out VehicleConfig config))
-        {
-            return config;
-        }
-        return null;
+        TryGetByPrefabGuid(prefabGuid, out var cfg);
+        return cfg;
     }
 
     public VehicleConfig GetConfigForPrefab(GameObject prefab)
     {
-        string prefabGuid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(prefab));
-        return GetConfigForPrefabGuid(prefabGuid);
+        if (prefab == null) return null;
+        string path = AssetDatabase.GetAssetPath(prefab);
+        string guid = AssetDatabase.AssetPathToGUID(path);
+        return GetConfigForPrefabGuid(guid);
     }
 
     public bool PrefabHasConfig(GameObject prefab)
@@ -107,13 +115,272 @@ public class VehicleIDRegistry : ScriptableObject
 
     public string GetIDForPrefab(GameObject prefab)
     {
-        VehicleConfig config = GetConfigForPrefab(prefab);
-        return config != null ? config.id : null;
+        var cfg = GetConfigForPrefab(prefab);
+        return cfg != null ? cfg.id : null;
     }
 
     public List<string> GetAllRegisteredIDs()
     {
+        if (idToConfigMap.Count == 0)
+            InitializeRegistry();
         return new List<string>(registeredIDs);
+    }
+
+    public string EnsureDeterministicId(VehicleConfig vehicleConfig)
+    {
+        if (vehicleConfig == null || string.IsNullOrWhiteSpace(vehicleConfig.prefabGuid))
+            return vehicleConfig != null ? vehicleConfig.id : string.Empty;
+
+        string deterministic = VehicleConfig.ComputeDeterministicIdFromPrefabGuid(vehicleConfig.prefabGuid);
+        if (string.IsNullOrEmpty(deterministic))
+            return vehicleConfig.id;
+
+        if (!string.Equals(vehicleConfig.id, deterministic, StringComparison.OrdinalIgnoreCase))
+        {
+            string old = vehicleConfig.id;
+            if (!string.IsNullOrWhiteSpace(old) &&
+                !string.Equals(old, deterministic, StringComparison.OrdinalIgnoreCase) &&
+                !vehicleConfig.legacyIds.Contains(old, StringComparer.OrdinalIgnoreCase))
+            {
+                vehicleConfig.legacyIds.Add(old);
+            }
+
+            vehicleConfig.id = deterministic;
+            EditorUtility.SetDirty(vehicleConfig);
+        }
+
+        return vehicleConfig.id;
+    }
+
+    public VehicleConfig GetOrCreateConfigForPrefab(GameObject prefab)
+    {
+        if (prefab == null) return null;
+
+        string prefabPath = AssetDatabase.GetAssetPath(prefab);
+        string prefabGuid = AssetDatabase.AssetPathToGUID(prefabPath);
+        if (string.IsNullOrWhiteSpace(prefabGuid)) return null;
+
+        if (TryGetByPrefabGuid(prefabGuid, out var existing) && existing != null)
+            return existing;
+
+        string[] configGuids = AssetDatabase.FindAssets("t:VehicleConfig", new[] { ConfigRoot });
+        foreach (var cfgGuid in configGuids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(cfgGuid);
+            var cfg = AssetDatabase.LoadAssetAtPath<VehicleConfig>(path);
+            if (cfg == null) continue;
+
+            if (string.Equals(cfg.prefabGuid, prefabGuid, StringComparison.OrdinalIgnoreCase))
+            {
+                cfg.prefabReference = prefab;
+                EnsureDeterministicId(cfg);
+                UpsertConfig(cfg);
+                EditorUtility.SetDirty(cfg);
+                AssetDatabase.SaveAssets();
+                return cfg;
+            }
+        }
+
+        if (!AssetDatabase.IsValidFolder(ConfigRoot))
+            AssetDatabase.CreateFolder("Assets", "VehicleConfigs");
+
+        var created = ScriptableObject.CreateInstance<VehicleConfig>();
+        created.prefabReference = prefab;
+        created.prefabGuid = prefabGuid;
+        created.vehicleName = prefab.name;
+        created.EnsureClassificationDefaults();
+        EnsureDeterministicId(created);
+
+        string safePrefix = SanitizeFileName(prefab.name);
+        string cfgPath = $"{ConfigRoot}/{safePrefix}_{prefabGuid[..8]}Config.asset";
+        cfgPath = AssetDatabase.GenerateUniqueAssetPath(cfgPath);
+
+        AssetDatabase.CreateAsset(created, cfgPath);
+        EditorUtility.SetDirty(created);
+        UpsertConfig(created);
+        AssetDatabase.SaveAssets();
+
+        return created;
+    }
+
+    public VehicleIdRepairReport RebuildGuidIndexAndRepair(bool rekeyAll, bool exportMigrationMap, bool quarantineDuplicates)
+    {
+        var report = new VehicleIdRepairReport();
+        var migrationMap = new VehicleIdMigrationMapFile
+        {
+            generatedUtc = DateTime.UtcNow.ToString("o")
+        };
+
+        idToConfigMap.Clear();
+        prefabGuidToConfigMap.Clear();
+        registeredIDs.Clear();
+
+        VehicleIdIndexService.EnsureDataFolder();
+        var jsonIndex = VehicleIdIndexService.LoadGuidIndex();
+        var jsonByPath = (jsonIndex.entries ?? new List<VehicleGuidIndexEntry>())
+            .Where(e => e != null && !string.IsNullOrWhiteSpace(e.configAssetPath))
+            .GroupBy(e => e.configAssetPath)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        string[] configGuids = AssetDatabase.FindAssets("t:VehicleConfig", new[] { ConfigRoot });
+        var scanned = new List<ConfigRecord>();
+
+        foreach (var cfgGuid in configGuids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(cfgGuid);
+            var cfg = AssetDatabase.LoadAssetAtPath<VehicleConfig>(path);
+            if (cfg == null) continue;
+
+            report.scannedConfigs++;
+
+            if (string.IsNullOrWhiteSpace(cfg.prefabGuid) && jsonByPath.TryGetValue(path, out var jsonEntry))
+            {
+                if (!string.IsNullOrWhiteSpace(jsonEntry.prefabGuid))
+                {
+                    cfg.prefabGuid = jsonEntry.prefabGuid;
+                    report.recoveredGuidsFromJson++;
+                    EditorUtility.SetDirty(cfg);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(cfg.prefabGuid))
+            {
+                report.missingGuidConfigs++;
+                continue;
+            }
+
+            string oldId = cfg.id;
+            string newId = EnsureDeterministicId(cfg);
+            if (!string.Equals(oldId, newId, StringComparison.OrdinalIgnoreCase))
+            {
+                report.updatedIds++;
+                migrationMap.mappings.Add(new VehicleIdMigrationMapEntry
+                {
+                    prefabGuid = cfg.prefabGuid,
+                    oldId = oldId,
+                    newId = newId,
+                    configAssetPath = path
+                });
+            }
+
+            DateTime created = DateTime.MaxValue;
+            try
+            {
+                created = File.GetCreationTimeUtc(Path.GetFullPath(path));
+            }
+            catch { }
+
+            scanned.Add(new ConfigRecord
+            {
+                config = cfg,
+                path = path,
+                prefabGuid = cfg.prefabGuid,
+                createdUtc = created
+            });
+        }
+
+        var finalRecords = new List<ConfigRecord>();
+        foreach (var group in scanned.GroupBy(r => r.prefabGuid, StringComparer.OrdinalIgnoreCase))
+        {
+            var ordered = group
+                .OrderBy(r => r.createdUtc)
+                .ThenBy(r => r.path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var keeper = ordered[0];
+            finalRecords.Add(keeper);
+
+            if (ordered.Count <= 1) continue;
+
+            report.duplicateGroups++;
+
+            for (int i = 1; i < ordered.Count; i++)
+            {
+                var dup = ordered[i];
+                if (!quarantineDuplicates)
+                    continue;
+
+                if (TryQuarantineConfig(dup.path, out var movedPath))
+                {
+                    report.quarantinedDuplicates++;
+                    Debug.LogWarning($"[UVS] Quarantined duplicate GUID config: '{dup.path}' -> '{movedPath}'");
+                }
+            }
+        }
+
+        foreach (var record in finalRecords)
+        {
+            var cfg = record.config;
+            if (cfg == null || string.IsNullOrWhiteSpace(cfg.prefabGuid) || string.IsNullOrWhiteSpace(cfg.id))
+                continue;
+
+            prefabGuidToConfigMap[cfg.prefabGuid] = cfg;
+            idToConfigMap[cfg.id] = cfg;
+        }
+
+        registeredIDs = idToConfigMap.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
+
+        var outIndex = new VehicleGuidIndexFile();
+        outIndex.entries = finalRecords
+            .Where(r => r.config != null && !string.IsNullOrWhiteSpace(r.config.id) && !string.IsNullOrWhiteSpace(r.prefabGuid))
+            .OrderBy(r => r.prefabGuid, StringComparer.OrdinalIgnoreCase)
+            .Select(r => new VehicleGuidIndexEntry
+            {
+                prefabGuid = r.prefabGuid,
+                vehicleId = r.config.id,
+                configAssetPath = r.path,
+                lastSyncedUtc = DateTime.UtcNow.ToString("o")
+            })
+            .ToList();
+
+        report.jsonEntriesWritten = outIndex.entries.Count;
+        VehicleIdIndexService.SaveGuidIndex(outIndex);
+
+        if (exportMigrationMap || rekeyAll)
+            VehicleIdIndexService.SaveMigrationMap(migrationMap);
+
+        EditorUtility.SetDirty(this);
+        AssetDatabase.SaveAssets();
+
+        return report;
+    }
+
+    public void ExportMigrationMapFromLegacyIds()
+    {
+        var file = new VehicleIdMigrationMapFile
+        {
+            generatedUtc = DateTime.UtcNow.ToString("o")
+        };
+
+        string[] configGuids = AssetDatabase.FindAssets("t:VehicleConfig", new[] { ConfigRoot });
+        foreach (var cfgGuid in configGuids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(cfgGuid);
+            var cfg = AssetDatabase.LoadAssetAtPath<VehicleConfig>(path);
+            if (cfg == null || string.IsNullOrWhiteSpace(cfg.id) || cfg.legacyIds == null || cfg.legacyIds.Count == 0)
+                continue;
+
+            foreach (string legacy in cfg.legacyIds.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (string.Equals(legacy, cfg.id, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                file.mappings.Add(new VehicleIdMigrationMapEntry
+                {
+                    prefabGuid = cfg.prefabGuid,
+                    oldId = legacy,
+                    newId = cfg.id,
+                    configAssetPath = path
+                });
+            }
+        }
+
+        VehicleIdIndexService.SaveMigrationMap(file);
+    }
+
+    public void InitializeRegistry()
+    {
+        RebuildGuidIndexAndRepair(rekeyAll: false, exportMigrationMap: false, quarantineDuplicates: false);
     }
 
     public void ClearRegistry()
@@ -124,139 +391,69 @@ public class VehicleIDRegistry : ScriptableObject
         EditorUtility.SetDirty(this);
     }
 
-    // Initialize both mappings from existing VehicleConfig assets
-    public void InitializeRegistry()
+    public void UpsertConfig(VehicleConfig vehicleConfig)
     {
-        idToConfigMap.Clear();
-        prefabGuidToConfigMap.Clear();
-        registeredIDs.Clear();
+        if (vehicleConfig == null) return;
+        if (string.IsNullOrWhiteSpace(vehicleConfig.prefabGuid)) return;
 
-        // Rebuild both dictionaries by finding all VehicleConfig assets
-        string[] configGUIDs = AssetDatabase.FindAssets("t:VehicleConfig");
-        foreach (string guid in configGUIDs)
-        {
-            string path = AssetDatabase.GUIDToAssetPath(guid);
-            VehicleConfig config = AssetDatabase.LoadAssetAtPath<VehicleConfig>(path);
-            
-            if (config != null)
-            {
-                // Register by ID
-                if (!string.IsNullOrEmpty(config.id))
-                {
-                    idToConfigMap[config.id] = config;
-                    if (!registeredIDs.Contains(config.id))
-                    {
-                        registeredIDs.Add(config.id);
-                    }
-                }
+        EnsureDeterministicId(vehicleConfig);
 
-                // Register by prefab GUID (this is the key part!)
-                if (!string.IsNullOrEmpty(config.prefabGuid))
-                {
-                    prefabGuidToConfigMap[config.prefabGuid] = config;
-                }
-            }
-        }
+        if (!string.IsNullOrWhiteSpace(vehicleConfig.id))
+            idToConfigMap[vehicleConfig.id] = vehicleConfig;
+
+        prefabGuidToConfigMap[vehicleConfig.prefabGuid] = vehicleConfig;
+
+        registeredIDs = idToConfigMap.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private VehicleConfig FindOrCreateConfigForPrefab(GameObject prefab, string prefabGuid)
+    private static string SanitizeFileName(string value)
     {
-        // First, try to find existing config by prefab GUID
-        if (prefabGuidToConfigMap.TryGetValue(prefabGuid, out VehicleConfig existingConfig))
-        {
-            return existingConfig;
-        }
+        if (string.IsNullOrWhiteSpace(value)) return "Vehicle";
 
-        // If not found in memory, search all VehicleConfig assets
-        string[] configGUIDs = AssetDatabase.FindAssets("t:VehicleConfig");
-        foreach (string guid in configGUIDs)
-        {
-            string path = AssetDatabase.GUIDToAssetPath(guid);
-            VehicleConfig config = AssetDatabase.LoadAssetAtPath<VehicleConfig>(path);
-            
-            if (config != null && config.prefabGuid == prefabGuid)
-            {
-                // Found it! Add to our mapping and return
-                prefabGuidToConfigMap[prefabGuid] = config;
-                if (!string.IsNullOrEmpty(config.id))
-                {
-                    idToConfigMap[config.id] = config;
-                }
-                return config;
-            }
-        }
-        
-        // Create new config if not found
-        var newConfig = ScriptableObject.CreateInstance<VehicleConfig>();
-        newConfig.prefabReference = prefab;
-        newConfig.prefabGuid = prefabGuid;
-        
-        const string folder = "Assets/VehicleConfigs";
-        if (!AssetDatabase.IsValidFolder(folder))
-            AssetDatabase.CreateFolder("Assets", "VehicleConfigs");
-        
-        string cfgPath = $"{folder}/{prefab.name}_{prefabGuid[..8]}Config.asset";
-        AssetDatabase.CreateAsset(newConfig, cfgPath);
-        AssetDatabase.SaveAssets();
-        
-        // Add to our mapping
-        prefabGuidToConfigMap[prefabGuid] = newConfig;
-        
-        return newConfig;
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = value.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+        return new string(chars);
     }
 
-    // Called when the ScriptableObject is loaded or enabled
+    private static bool TryQuarantineConfig(string sourcePath, out string targetPath)
+    {
+        targetPath = null;
+
+        if (string.IsNullOrWhiteSpace(sourcePath))
+            return false;
+
+        if (!AssetDatabase.IsValidFolder(ConfigRoot))
+            return false;
+
+        if (!AssetDatabase.IsValidFolder(QuarantineRoot))
+        {
+            if (!AssetDatabase.IsValidFolder("Assets/VehicleConfigs"))
+                AssetDatabase.CreateFolder("Assets", "VehicleConfigs");
+            AssetDatabase.CreateFolder("Assets/VehicleConfigs", "_DuplicateGuidQuarantine");
+        }
+
+        string fileName = Path.GetFileName(sourcePath);
+        string destination = AssetDatabase.GenerateUniqueAssetPath($"{QuarantineRoot}/{fileName}");
+
+        string err = AssetDatabase.MoveAsset(sourcePath, destination);
+        if (!string.IsNullOrEmpty(err))
+        {
+            Debug.LogWarning($"[UVS] Failed to quarantine duplicate config '{sourcePath}': {err}");
+            return false;
+        }
+
+        targetPath = destination;
+        return true;
+    }
+
     private void OnEnable()
     {
         InitializeRegistry();
     }
 
-    // Called when the asset is loaded in the editor
     private void OnValidate()
     {
-        // Ensure registry is initialized when the asset is inspected
-        if (idToConfigMap.Count == 0 && AssetDatabase.FindAssets("t:VehicleConfig").Length > 0)
-        {
+        if (idToConfigMap.Count == 0 && AssetDatabase.FindAssets("t:VehicleConfig", new[] { ConfigRoot }).Length > 0)
             InitializeRegistry();
-        }
-    }
-
-    public void RegisterVehicle(string vehicleID, VehicleConfig config)
-    {
-        if (string.IsNullOrEmpty(vehicleID))
-        {
-            Debug.LogWarning("VehicleID is empty, cannot register.");
-            return;
-        }
-
-        if (idToConfigMap.ContainsKey(vehicleID))
-        {
-            Debug.LogWarning($"VehicleID '{vehicleID}' already exists in registry.");
-            return;
-        }
-
-        // Set the ID in the config
-        config.id = vehicleID;
-
-        // Add to mappings
-        idToConfigMap.Add(vehicleID, config);
-
-        // Also add by prefab GUID if available
-        if (!string.IsNullOrEmpty(config.prefabGuid))
-        {
-            prefabGuidToConfigMap[config.prefabGuid] = config;
-        }
-
-        if (!registeredIDs.Contains(vehicleID))
-        {
-            registeredIDs.Add(vehicleID);
-        }
-
-        Debug.Log($"Registered Vehicle: {vehicleID}");
-
-        // Mark as dirty to save changes
-        EditorUtility.SetDirty(config);
-        EditorUtility.SetDirty(this);
-        AssetDatabase.SaveAssets();
     }
 }

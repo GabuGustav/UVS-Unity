@@ -21,6 +21,7 @@ public class VehicleConfigInspector : Editor
                 prop.name == "airCategory" ||
                 prop.name == "waterCategory" ||
                 prop.name == "spaceCategory" ||
+                prop.name == "railCategory" ||
                 prop.name == "specializedLand" ||
                 prop.name == "specializedAir")
             {
@@ -96,6 +97,17 @@ public class VehicleConfigInspector : Editor
                 {
                     Undo.RecordObject(config, "Change Space Category");
                     config.spaceCategory = newSpaceCat;
+                    EditorUtility.SetDirty(config);
+                }
+                break;
+
+            case VehicleConfig.VehicleType.Rail:
+                var newRailCat = (VehicleConfig.RailVehicleCategory)EditorGUILayout.EnumPopup(
+                    "Vehicle Category", config.railCategory);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    Undo.RecordObject(config, "Change Rail Category");
+                    config.railCategory = newRailCat;
                     EditorUtility.SetDirty(config);
                 }
                 break;

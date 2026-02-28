@@ -12,18 +12,15 @@ namespace UVS.Editor.Modules
     {
         private VisualElement _wheelsContent;
         private Button _scanWheelsButton;
+        private Button _swapFrontRearButton;
         private Button _applyCollidersButton;
         private Button _measureButton;
         
         public override string ModuleId => "wheels";
         public override string DisplayName => "Wheels";
         public override int Priority => 30;
-        public override bool RequiresSpecializedCategory => false;
-        public override bool IsConstructionModule => false;
-        public override bool IsTankModule => false;
-        public override bool IsVTOLModule => false;
 
-        protected new bool HasValidVehicle()
+        protected bool HasValidVehicle()
         {
             return _context?.CurrentConfig != null;
         }
@@ -97,6 +94,14 @@ namespace UVS.Editor.Modules
             _scanWheelsButton.style.marginRight = 10;
             _scanWheelsButton.style.marginBottom = 5;
             buttonContainer.Add(_scanWheelsButton);
+
+            _swapFrontRearButton = new Button(SwapFrontRear)
+            {
+                text = "Swap Front/Rear"
+            };
+            _swapFrontRearButton.style.marginRight = 10;
+            _swapFrontRearButton.style.marginBottom = 5;
+            buttonContainer.Add(_swapFrontRearButton);
             
             _applyCollidersButton = new Button(ApplyWheelColliders)
             {
@@ -149,6 +154,11 @@ namespace UVS.Editor.Modules
                 
                 wheelSetting.isSteering = wheelSetting.localPosition.z > 0;
                 wheelSetting.isPowered = wheelSetting.localPosition.z < 0;
+                wheelSetting.role = wheelSetting.isSteering
+                    ? VehicleConfig.WheelRole.FrontSteer
+                    : wheelSetting.isPowered
+                        ? VehicleConfig.WheelRole.RearDrive
+                        : VehicleConfig.WheelRole.Free;
                 
                 wheelSettings.Add(wheelSetting);
             }
@@ -173,34 +183,15 @@ namespace UVS.Editor.Modules
                 return;
             }
             
-            var frontWheels = wheelSettings.Where(w => w.isSteering).ToList();
-            var rearWheels = wheelSettings.Where(w => w.isPowered).ToList();
-            
-            if (frontWheels.Count > 0)
+            var allGroup = new Foldout { text = $"All Wheels ({wheelSettings.Count})", value = true };
+            allGroup.AddToClassList("wheels-foldout");
+
+            foreach (var wheel in wheelSettings.OrderByDescending(w => w.localPosition.z))
             {
-                var frontGroup = new Foldout { text = $"Front Wheels ({frontWheels.Count})" };
-                frontGroup.AddToClassList("wheels-foldout");
-                
-                foreach (var wheel in frontWheels)
-                {
-                    frontGroup.Add(CreateWheelRow(wheel));
-                }
-                
-                _wheelsContent.Add(frontGroup);
+                allGroup.Add(CreateWheelRow(wheel));
             }
-            
-            if (rearWheels.Count > 0)
-            {
-                var rearGroup = new Foldout { text = $"Rear Wheels ({rearWheels.Count})" };
-                rearGroup.AddToClassList("wheels-foldout");
-                
-                foreach (var wheel in rearWheels)
-                {
-                    rearGroup.Add(CreateWheelRow(wheel));
-                }
-                
-                _wheelsContent.Add(rearGroup);
-            }
+
+            _wheelsContent.Add(allGroup);
         }
         
         private VisualElement CreateWheelRow(VehicleConfig.WheelSettings wheelSetting)
@@ -263,6 +254,7 @@ namespace UVS.Editor.Modules
             steeringToggle.RegisterValueChangedCallback(evt => 
             {
                 wheelSetting.isSteering = evt.newValue;
+                wheelSetting.role = ResolveRoleFromFlags(wheelSetting);
                 EditorUtility.SetDirty(_context.CurrentConfig);
             });
             row.Add(steeringToggle);
@@ -274,11 +266,83 @@ namespace UVS.Editor.Modules
             poweredToggle.RegisterValueChangedCallback(evt => 
             {
                 wheelSetting.isPowered = evt.newValue;
+                wheelSetting.role = ResolveRoleFromFlags(wheelSetting);
                 EditorUtility.SetDirty(_context.CurrentConfig);
             });
             row.Add(poweredToggle);
+
+            var roleField = new EnumField("Role", wheelSetting.role)
+            {
+                value = wheelSetting.role
+            };
+            roleField.RegisterValueChangedCallback(evt =>
+            {
+                wheelSetting.role = (VehicleConfig.WheelRole)evt.newValue;
+                ApplyRolePreset(wheelSetting);
+                steeringToggle.SetValueWithoutNotify(wheelSetting.isSteering);
+                poweredToggle.SetValueWithoutNotify(wheelSetting.isPowered);
+                EditorUtility.SetDirty(_context.CurrentConfig);
+            });
+            row.Add(roleField);
             
             return row;
+        }
+
+        private void SwapFrontRear()
+        {
+            if (!HasValidVehicle() || _context.CurrentConfig.wheels == null || _context.CurrentConfig.wheels.Count == 0)
+            {
+                LogError("No wheels configured.");
+                return;
+            }
+
+            foreach (var wheel in _context.CurrentConfig.wheels)
+            {
+                bool oldSteer = wheel.isSteering;
+                wheel.isSteering = wheel.isPowered;
+                wheel.isPowered = oldSteer;
+
+                wheel.role = wheel.role switch
+                {
+                    VehicleConfig.WheelRole.FrontSteer => VehicleConfig.WheelRole.RearDrive,
+                    VehicleConfig.WheelRole.RearDrive => VehicleConfig.WheelRole.FrontSteer,
+                    _ => ResolveRoleFromFlags(wheel)
+                };
+            }
+
+            EditorUtility.SetDirty(_context.CurrentConfig);
+            AssetDatabase.SaveAssets();
+            DisplayWheels(_context.CurrentConfig.wheels);
+            LogMessage("Swapped front/rear wheel treatment. Re-test steering and drive.");
+        }
+
+        private static VehicleConfig.WheelRole ResolveRoleFromFlags(VehicleConfig.WheelSettings wheelSetting)
+        {
+            if (wheelSetting.isSteering && !wheelSetting.isPowered) return VehicleConfig.WheelRole.FrontSteer;
+            if (!wheelSetting.isSteering && wheelSetting.isPowered) return VehicleConfig.WheelRole.RearDrive;
+            return VehicleConfig.WheelRole.Free;
+        }
+
+        private static void ApplyRolePreset(VehicleConfig.WheelSettings wheelSetting)
+        {
+            switch (wheelSetting.role)
+            {
+                case VehicleConfig.WheelRole.FrontSteer:
+                    wheelSetting.isSteering = true;
+                    wheelSetting.isPowered = false;
+                    break;
+                case VehicleConfig.WheelRole.RearDrive:
+                    wheelSetting.isSteering = false;
+                    wheelSetting.isPowered = true;
+                    break;
+                case VehicleConfig.WheelRole.TrackLeft:
+                case VehicleConfig.WheelRole.TrackRight:
+                    wheelSetting.isSteering = false;
+                    wheelSetting.isPowered = true;
+                    break;
+                case VehicleConfig.WheelRole.Free:
+                    break;
+            }
         }
         
         private void ApplyWheelColliders()

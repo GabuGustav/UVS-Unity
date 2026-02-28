@@ -10,4 +10,10 @@ namespace UVS.Editor.Core
         void Cleanup();
         void ToggleGizmo(string id, bool value);
     }
+
+    public interface ISeatPreview
+    {
+        void SetSeatData(VehicleConfig config, System.Action<int, Vector3, Vector3> onSeatChanged);
+        void SetTopDown(bool enabled);
+    }
 }

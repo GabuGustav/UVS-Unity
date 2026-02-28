@@ -14,6 +14,9 @@ namespace UVS.Editor.Core
         public IVehiclePreview Preview { get; set; }
         public EnhancedEditorConsole Console { get; set; }
         public Dictionary<VehicleConfig.VehiclePartType, List<Transform>> LastScan { get; set; }
+        public Action RequestNewVehicle { get; set; }
+        public Action RequestLoadVehicle { get; set; }
+        public Action RequestHelp { get; set; }
 
         public VehicleConfig Config => CurrentConfig;
 

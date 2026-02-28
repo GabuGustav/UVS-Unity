@@ -7,6 +7,7 @@ using System;
 
 namespace UVS.Editor.Modules
 {
+    [VehicleModuleSupport(typeId: "land", categoryId: "specialized", subcategoryId: "lowrider")]
     public class LowriderModule : VehicleEditorModuleBase
     {
         public override string ModuleId => "lowrider";
@@ -30,6 +31,11 @@ namespace UVS.Editor.Modules
         private FloatField _bounceAmpField;
         private FloatField _tiltSpeedField;
         private FloatField _maxTiltField;
+        private FloatField _maxLiftHeightField;
+        private FloatField _maxVerticalVelocityField;
+        private FloatField _liftSpringField;
+        private FloatField _liftDampingField;
+        private FloatField _maxHopImpulseField;
         private FloatField _danceSpeedField;
         private Toggle _danceToggle;
         private Toggle _springsToggle;
@@ -87,6 +93,11 @@ namespace UVS.Editor.Modules
             _slamForceField = CreateFloatField(bounceFoldout, "Slam Force", 20000f);
             _bounceFreqField = CreateFloatField(bounceFoldout, "Bounce Frequency", 4f);
             _bounceAmpField = CreateFloatField(bounceFoldout, "Bounce Amplitude", 0.4f);
+            _maxLiftHeightField = CreateFloatField(bounceFoldout, "Max Lift Height", 0.6f);
+            _maxVerticalVelocityField = CreateFloatField(bounceFoldout, "Max Vertical Velocity", 4f);
+            _liftSpringField = CreateFloatField(bounceFoldout, "Lift Spring", 1200f);
+            _liftDampingField = CreateFloatField(bounceFoldout, "Lift Damping", 200f);
+            _maxHopImpulseField = CreateFloatField(bounceFoldout, "Max Hop Impulse/sec", 12000f);
             root.Add(bounceFoldout);
 
             var tiltFoldout = new Foldout { text = "Tilt & Dance", value = true };
@@ -193,6 +204,11 @@ namespace UVS.Editor.Modules
             _bounceAmpField.value = l.bounceAmplitude;
             _tiltSpeedField.value = l.tiltSpeed;
             _maxTiltField.value = l.maxTiltAngle;
+            _maxLiftHeightField.value = l.maxLiftHeight;
+            _maxVerticalVelocityField.value = l.maxVerticalVelocity;
+            _liftSpringField.value = l.liftSpring;
+            _liftDampingField.value = l.liftDamping;
+            _maxHopImpulseField.value = l.maxHopImpulsePerSecond;
             _danceToggle.value = l.enableDanceMode;
             _danceSpeedField.value = l.danceSpeed;
             _springsToggle.value = l.showCoiledSprings;
@@ -212,6 +228,11 @@ namespace UVS.Editor.Modules
             l.bounceAmplitude = _bounceAmpField.value;
             l.tiltSpeed = _tiltSpeedField.value;
             l.maxTiltAngle = _maxTiltField.value;
+            l.maxLiftHeight = _maxLiftHeightField.value;
+            l.maxVerticalVelocity = _maxVerticalVelocityField.value;
+            l.liftSpring = _liftSpringField.value;
+            l.liftDamping = _liftDampingField.value;
+            l.maxHopImpulsePerSecond = _maxHopImpulseField.value;
             l.enableDanceMode = _danceToggle.value;
             l.danceSpeed = _danceSpeedField.value;
             l.showCoiledSprings = _springsToggle.value;

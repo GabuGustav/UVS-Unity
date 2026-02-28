@@ -1,6 +1,5 @@
-using UnityEngine.UIElements;
 using UnityEngine;
-using System;
+using UnityEngine.UIElements;
 using UVS.Editor.Core;
 
 namespace UVS.Editor.Modules
@@ -11,10 +10,6 @@ namespace UVS.Editor.Modules
         public override string DisplayName => "Welcome";
         public override int Priority => 0;
         public override bool RequiresVehicle => false;
-        public override bool RequiresSpecializedCategory => false;
-        public override bool IsConstructionModule => false;
-        public override bool IsTankModule => false;
-        public override bool IsVTOLModule => false;
 
         protected override VisualElement CreateModuleUI()
         {
@@ -43,14 +38,14 @@ namespace UVS.Editor.Modules
             container.Add(titleLabel);
 
             var descriptionLabel = new Label(
-                "This powerful editor allows you to configure and customize vehicles with ease.\n\n" +
+                "This editor allows you to configure and customize vehicles.\n\n" +
                 "Features:\n" +
-                "• Drag & drop vehicle prefabs\n" +
-                "• Automatic part classification\n" +
-                "• Real-time 3D preview\n" +
-                "• Comprehensive configuration options\n" +
-                "• Export/import capabilities\n\n" +
-                "To get started, drag a vehicle prefab into the Info tab or select an existing vehicle."
+                "- Drag and drop vehicle prefabs\n" +
+                "- Automatic part classification\n" +
+                "- Real-time 3D preview\n" +
+                "- Comprehensive configuration options\n" +
+                "- Export/import capabilities\n\n" +
+                "Use New Vehicle, Load Vehicle, or Help to get started."
             )
             {
                 style =
@@ -72,21 +67,21 @@ namespace UVS.Editor.Modules
                 }
             };
 
-            var newVehicleButton = new Button(() => LogMessage("New Vehicle button clicked"))
+            var newVehicleButton = new Button(() => TriggerContextCommand(_context?.RequestNewVehicle, "New Vehicle"))
             {
                 text = "New Vehicle",
                 style = { marginRight = 10, marginBottom = 10 }
             };
             quickActionsContainer.Add(newVehicleButton);
 
-            var loadVehicleButton = new Button(() => LogMessage("Load Vehicle button clicked"))
+            var loadVehicleButton = new Button(() => TriggerContextCommand(_context?.RequestLoadVehicle, "Load Vehicle"))
             {
                 text = "Load Vehicle",
                 style = { marginRight = 10, marginBottom = 10 }
             };
             quickActionsContainer.Add(loadVehicleButton);
 
-            var helpButton = new Button(() => LogMessage("Help button clicked"))
+            var helpButton = new Button(() => TriggerContextCommand(_context?.RequestHelp, "Help"))
             {
                 text = "Help",
                 style = { marginRight = 10, marginBottom = 10 }
@@ -105,12 +100,23 @@ namespace UVS.Editor.Modules
 
         protected override void OnConfigChanged(VehicleConfig config)
         {
-            // Welcome module doesn't need config
+            // Welcome module is not config dependent.
         }
 
         protected override void OnModuleActivated()
         {
             LogMessage("Welcome module activated");
+        }
+
+        private void TriggerContextCommand(System.Action command, string actionName)
+        {
+            if (command == null)
+            {
+                LogWarning($"{actionName} action is unavailable.");
+                return;
+            }
+
+            command.Invoke();
         }
     }
 }

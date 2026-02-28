@@ -6,7 +6,9 @@ using UVS.Editor.Modules.Specialized;
 
 namespace UVS.Editor.Core
 {
+    /// <summary>
     /// Registry for managing vehicle editor modules
+    /// </summary>
     public class VehicleEditorModuleRegistry
     {
         private readonly Dictionary<string, IVehicleEditorModule> _modules = new();
@@ -15,7 +17,9 @@ namespace UVS.Editor.Core
         
         public IReadOnlyList<IVehicleEditorModule> Modules => _sortedModules.AsReadOnly();
         
+        /// <summary>
         /// Initialize the registry and discover all available modules
+        /// </summary>
         public void Initialize()
         {
             if (_isInitialized) return;
@@ -25,7 +29,9 @@ namespace UVS.Editor.Core
             _isInitialized = true;
         }
         
+        /// <summary>
         /// Register a module manually
+        /// </summary>
         public void RegisterModule(IVehicleEditorModule module)
         {
             if (module == null)
@@ -43,7 +49,9 @@ namespace UVS.Editor.Core
             SortModules();
         }
         
+        /// <summary>
         /// Unregister a module
+        /// </summary>
         public void UnregisterModule(string moduleId)
         {
             if (_modules.TryGetValue(moduleId, out var module))
@@ -54,7 +62,9 @@ namespace UVS.Editor.Core
             }
         }
         
+        /// <summary>
         /// Get a module by ID
+        /// </summary>
         public T GetModule<T>(string moduleId) where T : class, IVehicleEditorModule
         {
             if (_modules.TryGetValue(moduleId, out var module))
@@ -64,49 +74,30 @@ namespace UVS.Editor.Core
             return null;
         }
         
+        /// <summary>
         /// Get all modules of a specific type
+        /// </summary>
         public IEnumerable<T> GetModules<T>() where T : class, IVehicleEditorModule
         {
             return _sortedModules.OfType<T>();
         }
         
+        /// <summary>
         /// Get modules that don't require a vehicle to be loaded
+        /// </summary>
         public IEnumerable<IVehicleEditorModule> GetModulesWithoutVehicleRequirement()
         {
             return _sortedModules.Where(m => !m.RequiresVehicle);
         }
         
+        /// <summary>
         /// Get modules that require a vehicle to be loaded
+        /// </summary>
         public IEnumerable<IVehicleEditorModule> GetModulesWithVehicleRequirement()
         {
             return _sortedModules.Where(m => m.RequiresVehicle);
         }
-
-        //Get specialized modules
-        public IEnumerable<IVehicleEditorModule> GetSpecializedModules()
-        {
-            return _sortedModules.Where(m => m.RequiresSpecializedCategory);
-        }
-
-        /// Get construction module
-        /// </summary>
-        public IVehicleEditorModule GetConstructionModule()
-        {
-            return _sortedModules.FirstOrDefault(m => m.IsConstructionModule);
-        }
-
-        //Get tank module
-        public IVehicleEditorModule GetTankModule()
-        {
-            return _sortedModules.FirstOrDefault(m => m.IsTankModule);
-        }
-
-        //Get VTOL module   
-        public IVehicleEditorModule GetVTOLModule()
-        {
-            return _sortedModules.FirstOrDefault(m => m.IsVTOLModule);
-        }
-
+        
         /// <summary>
         /// Initialize all modules with the given context
         /// </summary>

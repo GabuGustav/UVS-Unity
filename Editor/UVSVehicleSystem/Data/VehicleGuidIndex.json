@@ -1,0 +1,17 @@
+{
+    "version": 1,
+    "entries": [
+        {
+            "prefabGuid": "412ce4132c46ed34991f5a1a220fea58",
+            "vehicleId": "UVS-412CE4132C46ED34991F5A1A220FEA58",
+            "configAssetPath": "Assets/VehicleConfigs/Plane_412ce413Config.asset",
+            "lastSyncedUtc": "2026-02-18T11:51:22.8437680Z"
+        },
+        {
+            "prefabGuid": "f72266263fecefe48819da89265ea98e",
+            "vehicleId": "UVS-F72266263FECEFE48819DA89265EA98E",
+            "configAssetPath": "Assets/VehicleConfigs/1950sClassicCar#6_f7226626Config.asset",
+            "lastSyncedUtc": "2026-02-18T11:51:22.8437680Z"
+        }
+    ]
+}

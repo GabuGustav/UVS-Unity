@@ -1,9 +1,8 @@
-﻿using UnityEngine.UIElements;
-using UnityEngine;
-using UnityEditor;
-using System.IO;
 using System;
 using System.Collections.Generic;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.UIElements;
 using UVS.Editor.Core;
 
 namespace UVS.Editor.Modules
@@ -12,26 +11,35 @@ namespace UVS.Editor.Modules
     {
         private VisualElement _dropZone;
         private Label _dropZoneLabel;
+
         private TextField _vehicleNameField;
         private TextField _manufacturerField;
-        private TextField _seedField;
-        private Label _idLabel;
-        private EnumField _typeField;
-        private EnumField _categoryField;
-        private EnumField _specializedField;
-        private Button _generateIDButton;
+
+        private VisualElement _classificationContainer;
+        private PopupField<string> _typePopup;
+        private PopupField<string> _categoryPopup;
+        private PopupField<string> _subcategoryPopup;
+
+        private readonly List<string> _typeIds = new();
+        private readonly List<string> _categoryIds = new();
+        private readonly List<string> _subcategoryIds = new();
+
+        private TextField _vehicleIdField;
+        private TextField _prefabGuidField;
+        private Label _idStatusLabel;
+
+        private bool _isUpdatingUI;
+        private VehicleTaxonomyAsset _taxonomy;
 
         public override string ModuleId => "info";
         public override string DisplayName => "Info";
         public override int Priority => 10;
         public override bool RequiresVehicle => false;
-        public override bool RequiresSpecializedCategory => false;
-        public override bool IsConstructionModule => false;
-        public override bool IsTankModule => false;
-        public override bool IsVTOLModule => false;
 
         protected override VisualElement CreateModuleUI()
         {
+            _taxonomy = VehicleTaxonomyService.GetOrCreateDefault(createIfMissing: true);
+
             var container = new VisualElement
             {
                 style =
@@ -45,7 +53,7 @@ namespace UVS.Editor.Modules
 
             CreateDropZone(container);
             CreateVehicleInfoSection(container);
-            CreateIDGenerationSection(container);
+            CreateVehicleIdentitySection(container);
 
             return container;
         }
@@ -53,8 +61,7 @@ namespace UVS.Editor.Modules
         private void CreateDropZone(VisualElement parent)
         {
             var dropZoneContainer = new VisualElement { style = { marginBottom = 20 } };
-
-            var dropZoneLabel = new Label("Drop Vehicle Prefab Here")
+            dropZoneContainer.Add(new Label("Drop Vehicle Prefab Here")
             {
                 style =
                 {
@@ -62,8 +69,7 @@ namespace UVS.Editor.Modules
                     unityFontStyleAndWeight = FontStyle.Bold,
                     marginBottom = 10
                 }
-            };
-            dropZoneContainer.Add(dropZoneLabel);
+            });
 
             _dropZone = new VisualElement
             {
@@ -97,8 +103,7 @@ namespace UVS.Editor.Modules
         private void CreateVehicleInfoSection(VisualElement parent)
         {
             var infoContainer = new VisualElement { style = { marginBottom = 20 } };
-
-            var infoLabel = new Label("Vehicle Information")
+            infoContainer.Add(new Label("Vehicle Information")
             {
                 style =
                 {
@@ -106,47 +111,41 @@ namespace UVS.Editor.Modules
                     unityFontStyleAndWeight = FontStyle.Bold,
                     marginBottom = 10
                 }
-            };
-            infoContainer.Add(infoLabel);
+            });
 
             _vehicleNameField = new TextField("Vehicle Name") { style = { marginBottom = 5 } };
             _vehicleNameField.RegisterValueChangedCallback(evt =>
             {
-                if (_context?.CurrentConfig != null)
-                {
-                    _context.CurrentConfig.vehicleName = evt.newValue;
-                    EditorUtility.SetDirty(_context.CurrentConfig);
-                }
+                if (_isUpdatingUI || _context?.CurrentConfig == null) return;
+                _context.CurrentConfig.vehicleName = evt.newValue;
+                EditorUtility.SetDirty(_context.CurrentConfig);
+                _context.NotifyConfigChanged(_context.CurrentConfig);
             });
             infoContainer.Add(_vehicleNameField);
 
             _manufacturerField = new TextField("Manufacturer") { style = { marginBottom = 5 } };
             _manufacturerField.RegisterValueChangedCallback(evt =>
             {
-                if (_context?.CurrentConfig != null)
-                {
-                    _context.CurrentConfig.authorName = evt.newValue;
-                    EditorUtility.SetDirty(_context.CurrentConfig);
-                }
+                if (_isUpdatingUI || _context?.CurrentConfig == null) return;
+                _context.CurrentConfig.authorName = evt.newValue;
+                EditorUtility.SetDirty(_context.CurrentConfig);
+                _context.NotifyConfigChanged(_context.CurrentConfig);
             });
             infoContainer.Add(_manufacturerField);
 
-            // Vehicle Type
-            _typeField = new EnumField("Vehicle Type", VehicleConfig.VehicleType.Land) { style = { marginBottom = 5 } };
-            _typeField.RegisterValueChangedCallback(OnVehicleTypeChanged);
-            infoContainer.Add(_typeField);
-
-            // Category field will be created dynamically
-            // Specialized field will be created dynamically
+            _classificationContainer = new VisualElement { style = { marginBottom = 5 } };
+            infoContainer.Add(_classificationContainer);
 
             parent.Add(infoContainer);
+
+            RebuildClassificationUI();
         }
 
-        private void CreateIDGenerationSection(VisualElement parent)
+        private void CreateVehicleIdentitySection(VisualElement parent)
         {
-            var idContainer = new VisualElement();
+            var idContainer = new VisualElement { style = { marginTop = 8 } };
 
-            var idLabel = new Label("Vehicle ID Generation")
+            idContainer.Add(new Label("Vehicle Identity")
             {
                 style =
                 {
@@ -154,240 +153,186 @@ namespace UVS.Editor.Modules
                     unityFontStyleAndWeight = FontStyle.Bold,
                     marginBottom = 10
                 }
-            };
-            idContainer.Add(idLabel);
+            });
 
-            var seedContainer = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center } };
-
-            var seedLabel = new Label("Seed (3 chars):") { style = { width = 120 } };
-            seedContainer.Add(seedLabel);
-
-            _seedField = new TextField { style = { width = 60 } };
-            _seedField.maxLength = 3;
-            _seedField.RegisterValueChangedCallback(_ => UpdateGenerateButton());
-            seedContainer.Add(_seedField);
-
-            idContainer.Add(seedContainer);
-
-            _generateIDButton = new Button(OnGenerateID)
+            var idRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginBottom = 6 } };
+            _vehicleIdField = new TextField("Vehicle ID") { style = { flexGrow = 1 } };
+            _vehicleIdField.SetEnabled(false);
+            idRow.Add(_vehicleIdField);
+            idRow.Add(new Button(() => EditorGUIUtility.systemCopyBuffer = _vehicleIdField.value ?? string.Empty)
             {
-                text = "Generate ID",
-                style = { marginTop = 10 }
-            };
-            _generateIDButton.SetEnabled(false);
-            idContainer.Add(_generateIDButton);
+                text = "Copy ID",
+                style = { marginLeft = 6 }
+            });
+            idContainer.Add(idRow);
 
-            _idLabel = new Label("No ID generated yet")
+            var guidRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginBottom = 6 } };
+            _prefabGuidField = new TextField("Prefab GUID") { style = { flexGrow = 1 } };
+            _prefabGuidField.SetEnabled(false);
+            guidRow.Add(_prefabGuidField);
+            guidRow.Add(new Button(() => EditorGUIUtility.systemCopyBuffer = _prefabGuidField.value ?? string.Empty)
+            {
+                text = "Copy GUID",
+                style = { marginLeft = 6 }
+            });
+            idContainer.Add(guidRow);
+
+            _idStatusLabel = new Label("Status: Waiting for prefab")
             {
                 style =
                 {
-                    marginTop = 10,
-                    color = Color.yellow
+                    marginTop = 4,
+                    color = Color.yellow,
+                    unityFontStyleAndWeight = FontStyle.Bold
                 }
             };
-            idContainer.Add(_idLabel);
+            idContainer.Add(_idStatusLabel);
 
             parent.Add(idContainer);
         }
 
-        private void OnVehicleTypeChanged(ChangeEvent<Enum> evt)
+        private void RebuildClassificationUI()
         {
-            if (_context?.CurrentConfig == null) return;
+            _classificationContainer?.Clear();
+            _typeIds.Clear();
+            _categoryIds.Clear();
+            _subcategoryIds.Clear();
 
-            var newType = (VehicleConfig.VehicleType)evt.newValue;
-
-            // Save the type
-            _context.CurrentConfig.vehicleType = newType;
-
-            // Reset category to Standard when type changes
-            ResetCategoryToStandard(newType);
-
-            // Mark dirty
-            EditorUtility.SetDirty(_context.CurrentConfig);
-
-            // Rebuild category UI
-            RebuildCategoryField();
-
-            // Update generate button
-            UpdateGenerateButton();
-
-            // Notify context that config changed (triggers module visibility updates)
-            _context.NotifyConfigChanged(_context.CurrentConfig);
-            VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
-        }
-
-        private void ResetCategoryToStandard(VehicleConfig.VehicleType type)
-        {
-            if (_context?.CurrentConfig == null) return;
-
-            switch (type)
+            if (_taxonomy == null)
             {
-                case VehicleConfig.VehicleType.Land:
-                    _context.CurrentConfig.landCategory = VehicleConfig.LandVehicleCategory.Standard;
-                    break;
-                case VehicleConfig.VehicleType.Air:
-                    _context.CurrentConfig.airCategory = VehicleConfig.AirVehicleCategory.Standard;
-                    break;
-                case VehicleConfig.VehicleType.Water:
-                    _context.CurrentConfig.waterCategory = VehicleConfig.WaterVehicleCategory.Standard;
-                    break;
-                case VehicleConfig.VehicleType.Space:
-                    _context.CurrentConfig.spaceCategory = VehicleConfig.SpaceVehicleCategory.Standard;
-                    break;
-            }
-        }
-
-        private void RebuildCategoryField()
-        {
-            if (_context?.CurrentConfig == null) return;
-
-            // Remove old category field
-            _categoryField?.RemoveFromHierarchy();
-            _categoryField = null;
-
-            // Remove old specialized field
-            _specializedField?.RemoveFromHierarchy();
-            _specializedField = null;
-
-            var type = _context.CurrentConfig.vehicleType;
-
-            // Create appropriate category field based on type
-            switch (type)
-            {
-                case VehicleConfig.VehicleType.Land:
-                    _categoryField = new EnumField("Vehicle Category", _context.CurrentConfig.landCategory);
-                    _categoryField.RegisterValueChangedCallback(evt =>
-                    {
-                        var newCategory = (VehicleConfig.LandVehicleCategory)evt.newValue;
-                        _context.CurrentConfig.landCategory = newCategory;
-                        EditorUtility.SetDirty(_context.CurrentConfig);
-
-                        // Rebuild specialized field if needed
-                        RebuildSpecializedField();
-
-                        // Notify modules to update visibility
-                        _context.NotifyConfigChanged(_context.CurrentConfig);
-                        VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
-                    });
-                    break;
-
-                case VehicleConfig.VehicleType.Air:
-                    _categoryField = new EnumField("Vehicle Category", _context.CurrentConfig.airCategory);
-                    _categoryField.RegisterValueChangedCallback(evt =>
-                    {
-                        var newCategory = (VehicleConfig.AirVehicleCategory)evt.newValue;
-                        _context.CurrentConfig.airCategory = newCategory;
-                        EditorUtility.SetDirty(_context.CurrentConfig);
-
-                        RebuildSpecializedField();
-                        _context.NotifyConfigChanged(_context.CurrentConfig);
-                        VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
-                    });
-                    break;
-
-                case VehicleConfig.VehicleType.Water:
-                    _categoryField = new EnumField("Vehicle Category", _context.CurrentConfig.waterCategory);
-                    _categoryField.RegisterValueChangedCallback(evt =>
-                    {
-                        var newCategory = (VehicleConfig.WaterVehicleCategory)evt.newValue;
-                        _context.CurrentConfig.waterCategory = newCategory;
-                        EditorUtility.SetDirty(_context.CurrentConfig);
-
-                        _context.NotifyConfigChanged(_context.CurrentConfig);
-                        VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
-                    });
-                    break;
-
-                case VehicleConfig.VehicleType.Space:
-                    _categoryField = new EnumField("Vehicle Category", _context.CurrentConfig.spaceCategory);
-                    _categoryField.RegisterValueChangedCallback(evt =>
-                    {
-                        var newCategory = (VehicleConfig.SpaceVehicleCategory)evt.newValue;
-                        _context.CurrentConfig.spaceCategory = newCategory;
-                        EditorUtility.SetDirty(_context.CurrentConfig);
-
-                        _context.NotifyConfigChanged(_context.CurrentConfig);
-                        VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
-                    });
-                    break;
-
-                case VehicleConfig.VehicleType.Fictional:
-                    // No category for fictional
-                    break;
+                _classificationContainer?.Add(new Label("Taxonomy asset missing."));
+                return;
             }
 
-            // Add category field after type field
-            if (_categoryField != null)
+            string typeId = _context?.CurrentConfig != null
+                ? VehicleClassificationResolver.GetTypeId(_context.CurrentConfig)
+                : "land";
+            string categoryId = _context?.CurrentConfig != null
+                ? VehicleClassificationResolver.GetCategoryId(_context.CurrentConfig)
+                : "standard";
+            string subcategoryId = _context?.CurrentConfig != null
+                ? VehicleClassificationResolver.GetSubcategoryId(_context.CurrentConfig)
+                : string.Empty;
+
+            var typeOptions = new List<string>();
+            foreach (var type in _taxonomy.types)
             {
-                _categoryField.style.marginBottom = 5;
-                _typeField.parent.Add(_categoryField);
+                _typeIds.Add(type.id);
+                typeOptions.Add(FormatLabel(type.displayName, type.id));
             }
 
-            // Check if we need specialized field
-            RebuildSpecializedField();
-        }
+            int selectedType = Mathf.Max(0, _typeIds.FindIndex(t => string.Equals(t, typeId, StringComparison.OrdinalIgnoreCase)));
+            if (selectedType >= typeOptions.Count) selectedType = 0;
 
-        private void RebuildSpecializedField()
-        {
-            if (_context?.CurrentConfig == null) return;
-
-            // Remove old specialized field
-            _specializedField?.RemoveFromHierarchy();
-            _specializedField = null;
-
-            // Only show specialized field if category is "Specialized"
-            if (!_context.CurrentConfig.IsSpecialized) return;
-
-            var type = _context.CurrentConfig.vehicleType;
-
-            switch (type)
+            _typePopup = new PopupField<string>("Vehicle Type", typeOptions, selectedType);
+            _typePopup.RegisterValueChangedCallback(_ =>
             {
-                case VehicleConfig.VehicleType.Land:
-                    _specializedField = new EnumField("Specialized Type", _context.CurrentConfig.specializedLand);
-                    _specializedField.RegisterValueChangedCallback(evt =>
-                    {
-                        var newSpec = (VehicleConfig.SpecializedLandVehicleType)evt.newValue;
-                        _context.CurrentConfig.specializedLand = newSpec;
-                        EditorUtility.SetDirty(_context.CurrentConfig);
+                if (_isUpdatingUI) return;
+                ApplyClassificationFromUI(rebuild: true);
+            });
+            _classificationContainer.Add(_typePopup);
 
-                        // Notify modules to update visibility
-                        _context.NotifyConfigChanged(_context.CurrentConfig);
-                        VehicleRuntimeAutoBinder.QueueSync(_context.CurrentConfig);
-                    });
-                    break;
-
-                case VehicleConfig.VehicleType.Air:
-                    _specializedField = new EnumField("Specialized Type", _context.CurrentConfig.specializedAir);
-                    _specializedField.RegisterValueChangedCallback(evt =>
-                    {
-                        var newSpec = (VehicleConfig.SpecializedAirVehicleType)evt.newValue;
-                        _context.CurrentConfig.specializedAir = newSpec;
-                        EditorUtility.SetDirty(_context.CurrentConfig);
-
-                        _context.NotifyConfigChanged(_context.CurrentConfig);
-                    });
-                    break;
-            }
-
-            // Add specialized field after category field
-            if (_specializedField != null)
+            var selectedTypeEntry = _taxonomy.types.Count > selectedType ? _taxonomy.types[selectedType] : null;
+            var categoryOptions = new List<string>();
+            if (selectedTypeEntry != null)
             {
-                _specializedField.style.marginBottom = 5;
-
-                // Insert after category field
-                if (_categoryField != null)
+                foreach (var cat in selectedTypeEntry.categories)
                 {
-                    _categoryField.parent.Add(_specializedField);
+                    _categoryIds.Add(cat.id);
+                    categoryOptions.Add(FormatLabel(cat.displayName, cat.id));
                 }
             }
+
+            if (categoryOptions.Count == 0)
+            {
+                _categoryIds.Add("standard");
+                categoryOptions.Add("Standard");
+            }
+
+            int selectedCategory = Mathf.Max(0, _categoryIds.FindIndex(c => string.Equals(c, categoryId, StringComparison.OrdinalIgnoreCase)));
+            if (selectedCategory >= categoryOptions.Count) selectedCategory = 0;
+
+            _categoryPopup = new PopupField<string>("Vehicle Category", categoryOptions, selectedCategory);
+            _categoryPopup.RegisterValueChangedCallback(_ =>
+            {
+                if (_isUpdatingUI) return;
+                ApplyClassificationFromUI(rebuild: true);
+            });
+            _classificationContainer.Add(_categoryPopup);
+
+            var selectedCategoryEntry = selectedTypeEntry != null && selectedCategory < selectedTypeEntry.categories.Count
+                ? selectedTypeEntry.categories[selectedCategory]
+                : null;
+
+            if (selectedCategoryEntry != null && selectedCategoryEntry.subcategories != null && selectedCategoryEntry.subcategories.Count > 0)
+            {
+                var subOptions = new List<string>();
+                foreach (var sub in selectedCategoryEntry.subcategories)
+                {
+                    _subcategoryIds.Add(sub.id);
+                    subOptions.Add(FormatLabel(sub.displayName, sub.id));
+                }
+
+                int selectedSub = Mathf.Max(0, _subcategoryIds.FindIndex(s => string.Equals(s, subcategoryId, StringComparison.OrdinalIgnoreCase)));
+                if (selectedSub >= subOptions.Count) selectedSub = 0;
+
+                _subcategoryPopup = new PopupField<string>("Subcategory", subOptions, selectedSub);
+                _subcategoryPopup.RegisterValueChangedCallback(_ =>
+                {
+                    if (_isUpdatingUI) return;
+                    ApplyClassificationFromUI(rebuild: false);
+                });
+                _classificationContainer.Add(_subcategoryPopup);
+            }
+            else
+            {
+                _subcategoryPopup = null;
+            }
+        }
+
+        private static string FormatLabel(string displayName, string id)
+        {
+            if (!string.IsNullOrWhiteSpace(displayName)) return displayName;
+            return ObjectNames.NicifyVariableName(id ?? "Unknown");
+        }
+
+        private static string GetSelectedId(PopupField<string> popup, List<string> ids, string fallback)
+        {
+            if (popup == null || ids.Count == 0) return fallback;
+            int idx = popup.index;
+            if (idx < 0 || idx >= ids.Count) return fallback;
+            return ids[idx] ?? fallback;
+        }
+
+        private void ApplyClassificationFromUI(bool rebuild)
+        {
+            if (_context?.CurrentConfig == null) return;
+
+            _context.CurrentConfig.classification ??= new VehicleConfig.VehicleClassificationData();
+            _context.CurrentConfig.classification.typeId = GetSelectedId(_typePopup, _typeIds, "land");
+            _context.CurrentConfig.classification.categoryId = GetSelectedId(_categoryPopup, _categoryIds, "standard");
+            _context.CurrentConfig.classification.subcategoryId = _subcategoryPopup != null
+                ? GetSelectedId(_subcategoryPopup, _subcategoryIds, string.Empty)
+                : string.Empty;
+
+            _context.CurrentConfig.SyncLegacyClassificationFromIds();
+            EditorUtility.SetDirty(_context.CurrentConfig);
+
+            if (rebuild)
+            {
+                _isUpdatingUI = true;
+                RebuildClassificationUI();
+                _isUpdatingUI = false;
+            }
+
+            _context.NotifyConfigChanged(_context.CurrentConfig);
         }
 
         private void OnDragUpdated(DragUpdatedEvent e)
         {
             if (DragAndDrop.objectReferences.Length == 1 &&
                 DragAndDrop.objectReferences[0] is GameObject go &&
-                PrefabUtility.IsPartOfPrefabAsset(go) &&
-                go.CompareTag("vehicle"))
+                PrefabUtility.IsPartOfPrefabAsset(go))
             {
                 DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
             }
@@ -395,6 +340,7 @@ namespace UVS.Editor.Modules
             {
                 DragAndDrop.visualMode = DragAndDropVisualMode.Rejected;
             }
+
             e.StopPropagation();
         }
 
@@ -402,8 +348,7 @@ namespace UVS.Editor.Modules
         {
             e.StopPropagation();
 
-            if (DragAndDrop.objectReferences.Length != 1 ||
-                DragAndDrop.objectReferences[0] is not GameObject go)
+            if (DragAndDrop.objectReferences.Length != 1 || DragAndDrop.objectReferences[0] is not GameObject go)
             {
                 LogError("Please drop exactly one prefab here.");
                 return;
@@ -418,178 +363,85 @@ namespace UVS.Editor.Modules
             HandlePrefabDropped(go);
         }
 
-        protected override void OnModuleActivated()
-        {
-            if (_context?.CurrentConfig != null)
-            {
-                OnConfigChanged(_context.CurrentConfig);
-            }
-        }
-
         private void HandlePrefabDropped(GameObject prefab)
         {
             string assetPath = AssetDatabase.GetAssetPath(prefab);
             string prefabGuid = AssetDatabase.AssetPathToGUID(assetPath);
-
-            // Check if this vehicle already has a config
-            if (_context.GuidToConfigMap.TryGetValue(prefabGuid, out var existingConfig))
+            if (string.IsNullOrWhiteSpace(prefabGuid))
             {
-                // Vehicle already registered - load it
-                _context.NotifyConfigChanged(existingConfig);
-                _context.NotifyPrefabChanged(prefab);
-                _context.IsFinalized = true;
-
-                LoadConfigValues(existingConfig);
-
-                _dropZoneLabel.text = $"Loaded: {prefab.name}";
-                _dropZone.AddToClassList("dropzone-selected");
-
-                LogMessage($"Loaded existing vehicle: {existingConfig.id}");
-                _context.RequestValidation();
-
+                UpdateIdentityStatus("Missing prefab GUID. Cannot assign ID.", Color.red);
                 return;
             }
 
-            // New vehicle - not registered yet
+            VehicleConfig cfg = null;
+            bool created = false;
+            bool existedInRegistry = false;
+
+            if (_context.GuidToConfigMap.TryGetValue(prefabGuid, out var existing))
+            {
+                cfg = existing;
+                existedInRegistry = true;
+            }
+            else if (_context.Registry != null && _context.Registry.TryGetByPrefabGuid(prefabGuid, out var fromRegistry))
+            {
+                cfg = fromRegistry;
+                existedInRegistry = true;
+            }
+            else if (_context.Registry != null)
+            {
+                cfg = _context.Registry.GetOrCreateConfigForPrefab(prefab);
+                created = cfg != null && !existedInRegistry;
+            }
+
+            if (cfg == null)
+            {
+                UpdateIdentityStatus("Failed to resolve/create config for prefab.", Color.red);
+                return;
+            }
+
+            cfg.prefabReference = prefab;
+            cfg.prefabGuid = prefabGuid;
+            cfg.vehicleName = string.IsNullOrWhiteSpace(cfg.vehicleName) ? prefab.name : cfg.vehicleName;
+
+            if (created || cfg.classification == null || string.IsNullOrWhiteSpace(cfg.classification.typeId))
+            {
+                cfg.classification ??= new VehicleConfig.VehicleClassificationData();
+                cfg.classification.typeId = GetSelectedId(_typePopup, _typeIds, "land");
+                cfg.classification.categoryId = GetSelectedId(_categoryPopup, _categoryIds, "standard");
+                cfg.classification.subcategoryId = _subcategoryPopup != null
+                    ? GetSelectedId(_subcategoryPopup, _subcategoryIds, string.Empty)
+                    : string.Empty;
+                cfg.SyncLegacyClassificationFromIds();
+            }
+
+            if (_context.Registry != null)
+            {
+                _context.Registry.EnsureDeterministicId(cfg);
+                _context.Registry.UpsertConfig(cfg);
+                EditorUtility.SetDirty(_context.Registry);
+            }
+
+            EditorUtility.SetDirty(cfg);
+            AssetDatabase.SaveAssets();
+
+            _context.GuidToConfigMap[prefabGuid] = cfg;
             _context.NotifyPrefabChanged(prefab);
-            _context.IsFinalized = false;
-
-            _dropZoneLabel.text = $"New Vehicle: {prefab.name}";
-            _dropZone.AddToClassList("dropzone-selected");
-            _vehicleNameField.value = prefab.name;
-
-            UpdateGenerateButton();
-            LogMessage($"New vehicle prefab selected: {prefab.name}. Generate ID to register.");
-        }
-
-        private void LoadConfigValues(VehicleConfig config)
-        {
-            _vehicleNameField.value = config.vehicleName;
-            _manufacturerField.value = config.authorName;
-            _idLabel.text = config.id;
-            _idLabel.style.color = Color.green;
-
-            // Load type
-            _typeField.value = config.vehicleType;
-
-            // Rebuild category/specialized fields with loaded values
-            RebuildCategoryField();
-        }
-
-        private void UpdateGenerateButton()
-        {
-            // If this prefab already has a permanent ID, button stays off. No exceptions.
-            bool alreadyRegistered = false;
-            if (_context.SelectedPrefab != null)
-            {
-                string path = AssetDatabase.GetAssetPath(_context.SelectedPrefab);
-                string guid = AssetDatabase.AssetPathToGUID(path);
-                alreadyRegistered = _context.GuidToConfigMap.ContainsKey(guid) ||
-                                    _context.Registry.PrefabHasConfig(_context.SelectedPrefab);
-            }
-
-            bool valid = _context.SelectedPrefab != null &&
-                        _typeField.value != null &&
-                        _seedField.value.Trim().Length == 3 &&
-                        !alreadyRegistered;
-
-            _generateIDButton.SetEnabled(valid);
-        }
-
-        private void OnGenerateID()
-        {
-            if (_context.SelectedPrefab == null)
-            {
-                LogError("No prefab selected.");
-                return;
-            }
-
-            string assetPath = AssetDatabase.GetAssetPath(_context.SelectedPrefab);
-            string prefabGuid = AssetDatabase.AssetPathToGUID(assetPath);
-
-            // ── PERMANENT ID GUARD ──────────────────────────────────
-            // Check in-memory map first (fast)
-            if (_context.GuidToConfigMap.TryGetValue(prefabGuid, out var existingFromMap))
-            {
-                LogError($"This vehicle already has a permanent ID: {existingFromMap.id}. IDs cannot be regenerated.");
-                _idLabel.text = existingFromMap.id;
-                _idLabel.style.color = Color.green;
-                _generateIDButton.SetEnabled(false);
-                return;
-            }
-            // Check registry on disk (catches cases after editor reload)
-            if (_context.Registry.PrefabHasConfig(_context.SelectedPrefab))
-            {
-                var existingFromRegistry = _context.Registry.GetConfigForPrefab(_context.SelectedPrefab);
-                string existingId = existingFromRegistry != null ? existingFromRegistry.id : "unknown";
-                LogError($"This vehicle already has a permanent ID: {existingId}. IDs cannot be regenerated.");
-                _idLabel.text = existingId;
-                _idLabel.style.color = Color.green;
-                _generateIDButton.SetEnabled(false);
-                return;
-            }
-            // ────────────────────────────────────────────────────────
-
-            var type = (VehicleConfig.VehicleType)_typeField.value;
-            string prefix = type.ToString()[0].ToString();
-            string seed = _seedField.value.Trim().ToUpper();
-
-            if (seed.Length != 3)
-            {
-                LogError("Seed must be 3 characters.");
-                return;
-            }
-
-            string guid = System.Guid.NewGuid().ToString("N").ToUpper();
-            string id = $"{prefix}{seed}-{guid[..4]}-{guid.Substring(4, 4)}-{guid.Substring(8, 4)}";
-
-            int tries = 0;
-            while (_context.Registry.ContainsID(id) && tries++ < 5)
-            {
-                guid = System.Guid.NewGuid().ToString("N").ToUpper();
-                id = $"{prefix}{seed}-{guid[..4]}-{guid.Substring(4, 4)}-{guid.Substring(8, 4)}";
-            }
-
-            if (_context.Registry.ContainsID(id))
-            {
-                LogError("ID collision detected. Please try again.");
-                return;
-            }
-
-            _context.Registry.RegisterID(id, _context.SelectedPrefab);
-            EditorUtility.SetDirty(_context.Registry);
-            AssetDatabase.SaveAssets();
-
-            var newConfig = ScriptableObject.CreateInstance<VehicleConfig>();
-            newConfig.prefabReference = _context.SelectedPrefab;
-            newConfig.prefabGuid = prefabGuid;
-            newConfig.id = id;
-            newConfig.vehicleName = _vehicleNameField.value;
-            newConfig.authorName = _manufacturerField.value;
-            newConfig.vehicleType = type;
-
-            // Set initial category to Standard
-            ResetCategoryToStandard(type);
-
-            const string folder = "Assets/VehicleConfigs";
-            if (!AssetDatabase.IsValidFolder(folder))
-                AssetDatabase.CreateFolder("Assets", "VehicleConfigs");
-
-            string configPath = $"{folder}/{_context.SelectedPrefab.name}_{prefabGuid[..8]}Config.asset";
-            AssetDatabase.CreateAsset(newConfig, configPath);
-            AssetDatabase.SaveAssets();
-
-            _context.GuidToConfigMap[prefabGuid] = newConfig;
-            _context.NotifyConfigChanged(newConfig);
+            _context.NotifyConfigChanged(cfg);
             _context.IsFinalized = true;
 
-            _idLabel.text = id;
-            _idLabel.style.color = Color.green;
+            _dropZoneLabel.text = $"Loaded: {prefab.name}";
+            _dropZone.AddToClassList("dropzone-selected");
 
-            // Rebuild UI with new config
-            RebuildCategoryField();
+            UpdateIdentityStatus(created ? "Synced (new config created)" : "Synced", Color.green);
+            LogMessage($"Vehicle synced: {cfg.id}");
+            _context.RequestValidation();
+        }
 
-            LogMessage($"Vehicle ID \"{id}\" generated successfully.");
+        private void UpdateIdentityStatus(string text, Color color)
+        {
+            if (_idStatusLabel == null) return;
+            _idStatusLabel.text = $"Status: {text}";
+            _idStatusLabel.style.color = color;
         }
 
         protected override ValidationResult ValidateModule()
@@ -597,26 +449,61 @@ namespace UVS.Editor.Modules
             if (_context.SelectedPrefab == null)
                 return ValidationResult.Warning("No vehicle prefab selected");
 
-            if (!_context.IsFinalized)
-                return ValidationResult.Warning("Vehicle ID not generated yet");
+            if (_context.CurrentConfig == null)
+                return ValidationResult.Error("No vehicle config loaded");
+
+            if (string.IsNullOrWhiteSpace(_context.CurrentConfig.prefabGuid))
+                return ValidationResult.Error("Prefab GUID is missing");
+
+            string expected = VehicleConfig.ComputeDeterministicIdFromPrefabGuid(_context.CurrentConfig.prefabGuid);
+            if (!string.Equals(_context.CurrentConfig.id, expected, StringComparison.OrdinalIgnoreCase))
+                return ValidationResult.Warning("Vehicle ID is out of sync. Drop prefab again or run ID repair.");
 
             return ValidationResult.Success();
         }
 
         protected override void OnConfigChanged(VehicleConfig config)
         {
-            if (config != null)
+            if (config == null) return;
+
+            config.EnsureClassificationDefaults();
+
+            _isUpdatingUI = true;
+            _vehicleNameField.value = string.IsNullOrEmpty(config.vehicleName)
+                ? (config.prefabReference != null ? config.prefabReference.name : "")
+                : config.vehicleName;
+            _manufacturerField.value = config.authorName ?? "";
+            RebuildClassificationUI();
+            _isUpdatingUI = false;
+
+            _vehicleIdField.value = config.id ?? string.Empty;
+            _prefabGuidField.value = config.prefabGuid ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(config.prefabGuid))
+                UpdateIdentityStatus("Missing prefab GUID", Color.red);
+            else if (!string.Equals(
+                config.id,
+                VehicleConfig.ComputeDeterministicIdFromPrefabGuid(config.prefabGuid),
+                StringComparison.OrdinalIgnoreCase))
             {
-                LoadConfigValues(config);
+                UpdateIdentityStatus("Out of sync (run ID repair)", new Color(1f, 0.8f, 0f));
             }
+            else
+                UpdateIdentityStatus("Synced", Color.green);
         }
 
         protected override void OnPrefabChanged(GameObject prefab)
         {
             if (prefab != null)
-            {
                 _vehicleNameField.value = prefab.name;
-            }
+        }
+
+        protected override void OnModuleActivated()
+        {
+            if (_context?.CurrentConfig != null)
+                OnConfigChanged(_context.CurrentConfig);
+            else
+                UpdateIdentityStatus("Waiting for prefab", Color.yellow);
         }
 
         public override void OnModuleGUI() { }

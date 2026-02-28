@@ -1,5 +1,5 @@
-using UnityEngine.UIElements;
 using UnityEngine;
+using UnityEngine.UIElements;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -48,22 +48,28 @@ namespace UVS.Editor.Core
     {
         private readonly List<ValidationMessage> messages = new();
 
-        public bool IsValid
-        {
-            get { return !messages.Any(m => m.Severity == ValidationSeverity.Error); }
-        }
+        public bool IsValid =>
+            !messages.Any(m => m.Severity == ValidationSeverity.Error);
 
         public string ErrorMessage { get; set; }
         public ValidationSeverity Severity { get; set; }
 
         public void AddError(string message)
         {
-            messages.Add(new ValidationMessage { Message = message, Severity = ValidationSeverity.Error });
+            messages.Add(new ValidationMessage
+            {
+                Message = message,
+                Severity = ValidationSeverity.Error
+            });
         }
 
         public void AddWarning(string message)
         {
-            messages.Add(new ValidationMessage { Message = message, Severity = ValidationSeverity.Warning });
+            messages.Add(new ValidationMessage
+            {
+                Message = message,
+                Severity = ValidationSeverity.Warning
+            });
         }
 
         public static ValidationResult Success()
@@ -73,19 +79,25 @@ namespace UVS.Editor.Core
 
         public static ValidationResult Error(string message)
         {
-            var result = new ValidationResult();
+            var result = new ValidationResult
+            {
+                ErrorMessage = message,
+                Severity = ValidationSeverity.Error
+            };
+
             result.AddError(message);
-            result.ErrorMessage = message;
-            result.Severity = ValidationSeverity.Error;
             return result;
         }
 
         public static ValidationResult Warning(string message)
         {
-            var result = new ValidationResult();
+            var result = new ValidationResult
+            {
+                ErrorMessage = message,
+                Severity = ValidationSeverity.Warning
+            };
+
             result.AddWarning(message);
-            result.ErrorMessage = message;
-            result.Severity = ValidationSeverity.Warning;
             return result;
         }
     }
@@ -97,31 +109,16 @@ namespace UVS.Editor.Core
         public abstract string ModuleId { get; }
         public abstract string DisplayName { get; }
         public abstract int Priority { get; }
-        public virtual bool RequiresVehicle { get { return true; } }
 
-        public virtual bool RequiresSpecializedCategory
-        {
-            get { return true; }
-        }
+        public virtual bool RequiresVehicle => true;
 
-        public virtual bool IsConstructionModule
-        {
-            get { return false; }
-        }
-
-        public virtual bool IsTankModule
-        {
-            get { return false; }
-        }
-
-        public virtual bool IsVTOLModule
-        {
-            get { return false; }
-        }
+        public virtual bool RequiresSpecializedCategory => false;
+        public virtual bool IsConstructionModule => false;
+        public virtual bool IsTankModule => false;
+        public virtual bool IsVTOLModule => false;
 
         public virtual bool CanActivateWithConfig(VehicleConfig config)
         {
-            // Default behavior: only requires a vehicle to exist
             if (RequiresVehicle && config == null)
                 return false;
 
@@ -136,6 +133,7 @@ namespace UVS.Editor.Core
         public void Initialize(VehicleEditorContext context)
         {
             _context = context;
+
             if (_context != null)
             {
                 _context.OnConfigChanged += OnConfigChanged;
@@ -182,25 +180,24 @@ namespace UVS.Editor.Core
 
         protected bool HasValidVehicle()
         {
-            return _context != null && _context.CurrentConfig != null && _context.SelectedPrefab != null;
+            return _context != null &&
+                   _context.CurrentConfig != null &&
+                   _context.SelectedPrefab != null;
         }
 
         protected void LogMessage(string message)
         {
-            if (_context != null && _context.Console != null)
-                _context.Console.LogInfo(message);
+            _context?.Console?.LogInfo(message);
         }
 
         protected void LogWarning(string message)
         {
-            if (_context != null && _context.Console != null)
-                _context.Console.LogWarning(message);
+            _context?.Console?.LogWarning(message);
         }
 
         protected void LogError(string message)
         {
-            if (_context != null && _context.Console != null)
-                _context.Console.LogError(message);
+            _context?.Console?.LogError(message);
         }
     }
 }

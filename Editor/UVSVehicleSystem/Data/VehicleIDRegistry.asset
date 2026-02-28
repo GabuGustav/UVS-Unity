@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5282d2a4c4fb01a4ca01d9c8b1effd6e, type: 3}
+  m_Name: VehicleIDRegistry
+  m_EditorClassIdentifier: Assembly-CSharp-Editor::VehicleIDRegistry
+  registeredIDs:
+  - UVS-412CE4132C46ED34991F5A1A220FEA58
+  - UVS-F72266263FECEFE48819DA89265EA98E
+  vehicleID: 
+  vehicleName: 
+  vehicleType: 
+  manufacturer: 
+  seatingCapacity: 0
+  config: {fileID: 0}

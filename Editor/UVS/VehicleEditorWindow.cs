@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+ï»¿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -12,8 +12,11 @@ namespace UVS.Editor
 {
     public class VehicleEditorWindow : EditorWindow
     {
-        [MenuItem("Tools/Vehicle Editor")]
+        [MenuItem("Tools/Vehicle Editor/Open Vehicle Editor")]
         public static void ShowWindow() => GetWindow<VehicleEditorWindow>("Vehicle Editor");
+
+        [MenuItem("Tools/Open UVS Vehicle Editor")]
+        public static void ShowWindowShortcut() => ShowWindow();
 
         // Systems
         private VehicleEditorModuleRegistry _moduleRegistry;
@@ -36,6 +39,8 @@ namespace UVS.Editor
         private bool _showWheelGizmos = true;
         private bool _showColliderGizmos = true;
         private bool _showSuspensionGizmos = true;
+        private bool _showSeatGizmos = true;
+        private bool _topDownPreview = false;
 
         private void OnEnable()
         {
@@ -59,10 +64,16 @@ namespace UVS.Editor
 
         private void InitializeSystems()
         {
+            VehicleTaxonomyService.GetOrCreateDefault(createIfMissing: true);
+            VehicleTaxonomyService.EnsureCompanionProfiles();
+
             _moduleRegistry = new VehicleEditorModuleRegistry();
             _moduleRegistry.Initialize();
 
             _context = new VehicleEditorContext();
+            _context.RequestNewVehicle = CreateNewVehicle;
+            _context.RequestLoadVehicle = LoadVehicle;
+            _context.RequestHelp = ShowHelp;
             LoadRegistryAndConfigs();
 
             _previewManager = new VehiclePreviewManager();
@@ -75,23 +86,19 @@ namespace UVS.Editor
             _context.OnValidationRequired += ValidateAllModules;
 
             _context.OnConfigChanged += OnContextConfigChanged;
-
             _context.OnPrefabChanged += OnPrefabChanged;
             _context.OnConfigChanged += OnConfigChangedForPreview;
-
         }
 
         private void OnPrefabChanged(GameObject prefab)
         {
-            Debug.Log($"[PREVIEW] OnPrefabChanged: {(prefab != null ? prefab.name : "NULL")}");
-
             if (prefab != null)
             {
                 SetPreviewVehicle(prefab);
+                UpdateSeatPreview();
             }
             else
             {
-                // Clear preview
                 _previewManager?.SetVehicle(null);
                 _previewContainer?.MarkDirtyRepaint();
             }
@@ -99,11 +106,10 @@ namespace UVS.Editor
 
         private void OnConfigChangedForPreview(VehicleConfig config)
         {
-            Debug.Log($"[PREVIEW] OnConfigChangedForPreview: {(config != null ? config.id : "NULL")}");
-
             if (config != null && config.prefabReference != null)
             {
                 SetPreviewVehicle(config.prefabReference);
+                UpdateSeatPreview();
             }
         }
 
@@ -117,9 +123,17 @@ namespace UVS.Editor
                 else
                 {
                     _context.Registry = ScriptableObject.CreateInstance<VehicleIDRegistry>();
-                    Directory.CreateDirectory("Assets/Editor/UVSVehicleSystem/Data");
-                    AssetDatabase.CreateAsset(_context.Registry, "Assets/Editor/UVSVehicleSystem/Data/VehicleIDRegistry.asset");
+                    VehicleIdIndexService.EnsureDataFolder();
+                    AssetDatabase.CreateAsset(_context.Registry, VehicleIdIndexService.DataFolder + "/VehicleIDRegistry.asset");
                     AssetDatabase.SaveAssets();
+                }
+
+                if (_context.Registry != null)
+                {
+                    _context.Registry.RebuildGuidIndexAndRepair(
+                        rekeyAll: false,
+                        exportMigrationMap: false,
+                        quarantineDuplicates: true);
                 }
 
                 _context.GuidToConfigMap.Clear();
@@ -143,8 +157,8 @@ namespace UVS.Editor
             var root = rootVisualElement;
             if (root == null) return;
             root.Clear();
+            root.AddToClassList("uvs-root");
 
-            // optional USS
             var ussPath = "Assets/Editor/UVS/VehicleEditorWindow.uss";
             if (File.Exists(ussPath))
             {
@@ -153,32 +167,41 @@ namespace UVS.Editor
             }
 
             var main = new VisualElement { style = { flexDirection = FlexDirection.Column, height = new StyleLength(Length.Percent(100)) } };
+            main.AddToClassList("uvs-main");
             root.Add(main);
 
             CreateHeader(main);
 
             var content = new VisualElement { style = { flexDirection = FlexDirection.Row, flexGrow = 1 } };
+            content.AddToClassList("uvs-content");
             main.Add(content);
 
             var left = new VisualElement { style = { flexDirection = FlexDirection.Column, flexGrow = 1, minWidth = 400 } };
+            left.AddToClassList("uvs-left");
             content.Add(left);
 
             _tabStrip = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap } };
+            _tabStrip.AddToClassList("uvs-tabs");
             left.Add(_tabStrip);
 
             _contentArea = new VisualElement { style = { flexGrow = 1 } };
+            _contentArea.AddToClassList("uvs-panel");
             left.Add(_contentArea);
 
             var right = new VisualElement { style = { width = 350, flexDirection = FlexDirection.Column } };
+            right.AddToClassList("uvs-right");
             content.Add(right);
 
             _previewContainer = new IMGUIContainer { style = { height = 220 } };
+            _previewContainer.AddToClassList("uvs-preview");
             right.Add(_previewContainer);
 
             _consoleArea = new ScrollView { style = { flexGrow = 1 } };
+            _consoleArea.AddToClassList("uvs-console");
             right.Add(_consoleArea);
 
             var consoleControls = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            consoleControls.AddToClassList("uvs-console-controls");
             var clearBtn = new Button(() => _console?.Clear()) { text = "Clear" };
             var exportBtn = new Button(ExportLogs) { text = "Export" };
             consoleControls.Add(clearBtn);
@@ -197,15 +220,18 @@ namespace UVS.Editor
                     flexDirection = FlexDirection.Row, justifyContent = Justify.SpaceBetween, alignItems = Align.Center
                 }
             };
-
+            header.AddToClassList("uvs-header");
             var left = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center } };
             var title = new Label("Vehicle Editor") { style = { fontSize = 18, unityFontStyleAndWeight = FontStyle.Bold, color = Color.white, marginRight = 12 } };
+            title.AddToClassList("uvs-title");
             left.Add(title);
 
             var newBtn = new Button(CreateNewVehicle) { text = "New Vehicle", style = { marginRight = 6 } };
             var loadBtn = new Button(LoadVehicle) { text = "Load Vehicle", style = { marginRight = 6 } };
             var helpBtn = new Button(ShowHelp) { text = "Help" };
-
+            newBtn.AddToClassList("uvs-header-button");
+            loadBtn.AddToClassList("uvs-header-button");
+            helpBtn.AddToClassList("uvs-header-button");
             left.Add(newBtn);
             left.Add(loadBtn);
             left.Add(helpBtn);
@@ -213,6 +239,7 @@ namespace UVS.Editor
             header.Add(left);
 
             var status = new Label("Ready") { name = "statusLabel", style = { color = Color.green } };
+            status.AddToClassList("uvs-status");
             header.Add(status);
 
             parent.Add(header);
@@ -243,7 +270,7 @@ namespace UVS.Editor
         private void DrawPreviewControls()
         {
             if (_previewContainer == null) return;
-            Rect controlsRect = new(_previewContainer.contentRect.x + 8, _previewContainer.contentRect.y + 8, 220, 120);
+            Rect controlsRect = new(_previewContainer.contentRect.x + 8, _previewContainer.contentRect.y + 8, 220, 150);
             GUILayout.BeginArea(controlsRect);
             GUILayout.BeginVertical("Box");
             GUILayout.Label("3D Preview Controls", EditorStyles.boldLabel);
@@ -251,6 +278,8 @@ namespace UVS.Editor
             bool newW = GUILayout.Toggle(_showWheelGizmos, "Show Wheel Gizmos");
             bool newC = GUILayout.Toggle(_showColliderGizmos, "Show Collider Gizmos");
             bool newS = GUILayout.Toggle(_showSuspensionGizmos, "Show Suspension Gizmos");
+            bool newSeats = GUILayout.Toggle(_showSeatGizmos, "Show Seat Gizmos");
+            bool newTopDown = GUILayout.Toggle(_topDownPreview, "Top-Down View");
 
             if (newW != _showWheelGizmos)
             {
@@ -267,18 +296,38 @@ namespace UVS.Editor
                 _showSuspensionGizmos = newS;
                 _previewManager.ToggleGizmo("suspension", newS);
             }
+            if (newSeats != _showSeatGizmos)
+            {
+                _showSeatGizmos = newSeats;
+                _previewManager.ToggleGizmo("seats", newSeats);
+            }
+            if (newTopDown != _topDownPreview)
+            {
+                _topDownPreview = newTopDown;
+                if (_previewManager.Current is ISeatPreview seatPreview)
+                    seatPreview.SetTopDown(_topDownPreview);
+            }
 
             GUILayout.Space(6);
             GUILayout.Label("Pipeline", EditorStyles.label);
 
             VehiclePreviewManager.Mode mode = _previewManager.mode;
-            var newMode = (VehiclePreviewManager.Mode)GUILayout.Toolbar((int)mode, new[] { "Auto", "Built-in", "URP" });
+            var newMode = (VehiclePreviewManager.Mode)GUILayout.Toolbar((int)mode, new[] { "Auto", "Built-in", "URP", "HDRP" });
 
             if (newMode != mode)
+            {
                 _previewManager.SetMode(newMode);
+                UpdateSeatPreview();
+            }
+
+            if (!_previewManager.IsModeSupported(newMode) &&
+                (newMode == VehiclePreviewManager.Mode.URP || newMode == VehiclePreviewManager.Mode.HDRP))
+            {
+                GUILayout.Label($"{newMode} preview package not installed. Falling back automatically.", EditorStyles.miniLabel);
+            }
 
             if (GUILayout.Button("Reset Camera"))
-                _previewManager.SetVehicle(_context?.SelectedPrefab); // This reframes the camera
+                _previewManager.SetVehicle(_context?.SelectedPrefab);
 
             GUILayout.EndVertical();
             GUILayout.EndArea();
@@ -302,18 +351,17 @@ namespace UVS.Editor
                         text = module.DisplayName,
                         name = $"{module.ModuleId}Tab"
                     };
+                    btn.AddToClassList("uvs-tab");
 
-                    // Initial visibility check
-                    bool canShow = module.CanActivateWithConfig(_context.CurrentConfig);
+                    bool canShow = CanShowModule(module, _context.CurrentConfig);
                     btn.style.display = canShow ? DisplayStyle.Flex : DisplayStyle.None;
 
                     _tabStrip.Add(btn);
                     _tabButtons[module.ModuleId] = btn;
                 }
 
-                // Activate first visible module
                 var firstVisibleModule = _moduleRegistry.Modules
-                    .FirstOrDefault(m => m.CanActivateWithConfig(_context.CurrentConfig));
+                    .FirstOrDefault(m => CanShowModule(m, _context.CurrentConfig));
 
                 if (firstVisibleModule != null)
                     ActivateModule(firstVisibleModule.ModuleId);
@@ -329,7 +377,11 @@ namespace UVS.Editor
             _activeModule?.OnDeactivate();
             var module = _moduleRegistry?.GetModule<IVehicleEditorModule>(id);
             if (module == null) return;
-            if (module.RequiresVehicle && !HasValidVehicle()) { _console?.LogWarning($"Cannot activate {module.DisplayName} - no vehicle"); return; }
+            if (module.RequiresVehicle && !HasValidVehicle())
+            {
+                _console?.LogWarning($"Cannot activate {module.DisplayName} - no vehicle");
+                return;
+            }
 
             _contentArea?.Clear();
             if (_moduleUI.TryGetValue(id, out var ui))
@@ -351,10 +403,17 @@ namespace UVS.Editor
                 bool isActive = _activeModule != null && _activeModule.ModuleId == kv.Key;
                 kv.Value.EnableInClassList("tab-active", isActive);
 
-                // Update visibility based on config
-                bool canShow = module.CanActivateWithConfig(_context?.CurrentConfig);
+                bool canShow = CanShowModule(module, _context?.CurrentConfig);
                 kv.Value.style.display = canShow ? DisplayStyle.Flex : DisplayStyle.None;
             }
+        }
+
+        private bool CanShowModule(IVehicleEditorModule module, VehicleConfig config)
+        {
+            if (module == null) return false;
+            if (!module.CanActivateWithConfig(config)) return false;
+            if (module.RequiresVehicle && !HasValidVehicle()) return false;
+            return ModuleCompatibilityService.IsModuleAllowed(module, config);
         }
 
         private bool HasValidVehicle() => _context?.CurrentConfig != null && _context.SelectedPrefab != null;
@@ -367,6 +426,8 @@ namespace UVS.Editor
             {
                 try
                 {
+                    if (!CanShowModule(module, _context?.CurrentConfig))
+                        continue;
                     var r = module.Validate();
                     results.Add(r);
                     if (!r.IsValid) _console?.LogError($"Module {module.DisplayName}: {r.ErrorMessage}");
@@ -405,14 +466,15 @@ namespace UVS.Editor
             {
                 _previewManager?.Cleanup();
 
-                // ============ ADD THIS ============
                 if (_context != null)
                 {
                     _context.OnConfigChanged -= OnConfigChangedForPreview;
                     _context.OnPrefabChanged -= OnPrefabChanged;
                     _context.OnConfigChanged -= OnContextConfigChanged;
+                    _context.RequestNewVehicle = null;
+                    _context.RequestLoadVehicle = null;
+                    _context.RequestHelp = null;
                 }
-                // ==================================
 
                 if (_moduleRegistry != null)
                 {
@@ -432,21 +494,21 @@ namespace UVS.Editor
             {
                 _console?.LogInfo("Creating new vehicle...");
                 var newConfig = ScriptableObject.CreateInstance<VehicleConfig>();
-                newConfig.id = $"Vehicle_{System.Guid.NewGuid().ToString()[..8]}";
+                newConfig.id = string.Empty;
                 newConfig.vehicleName = "New Vehicle";
                 newConfig.prefabGuid = string.Empty;
+                newConfig.EnsureClassificationDefaults();
 
                 _context.CurrentConfig = newConfig;
                 _context.SelectedPrefab = null;
 
-                string path = EditorUtility.SaveFilePanelInProject("Save Vehicle Config", $"{newConfig.id}.asset", "asset", "Save the vehicle configuration");
+                string path = EditorUtility.SaveFilePanelInProject("Save Vehicle Config", "VehicleConfig.asset", "asset", "Save the vehicle configuration");
                 if (!string.IsNullOrEmpty(path))
                 {
                     AssetDatabase.CreateAsset(newConfig, path);
                     AssetDatabase.SaveAssets();
-                    if (_context.Registry != null) _context.Registry.RegisterVehicle(newConfig.id, newConfig);
                     _context.NotifyConfigChanged(newConfig);
-                    _console?.LogSuccess($"Created new vehicle: {newConfig.id}");
+                    _console?.LogSuccess("Created new vehicle config. Drop a prefab in Info to assign deterministic ID.");
                     UpdateTabButtons();
                     RefreshPreview();
                 }
@@ -467,13 +529,31 @@ namespace UVS.Editor
                     var cfg = AssetDatabase.LoadAssetAtPath<VehicleConfig>(path);
                     if (cfg != null)
                     {
+                        if (_context.Registry != null)
+                        {
+                            string oldId = cfg.id;
+                            _context.Registry.EnsureDeterministicId(cfg);
+                            _context.Registry.UpsertConfig(cfg);
+                            if (!string.Equals(oldId, cfg.id, System.StringComparison.OrdinalIgnoreCase))
+                                EditorUtility.SetDirty(cfg);
+                        }
+
                         _context.CurrentConfig = cfg;
                         if (!string.IsNullOrEmpty(cfg.prefabGuid))
                         {
                             var prefabPath = AssetDatabase.GUIDToAssetPath(cfg.prefabGuid);
                             _context.SelectedPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
                             SetPreviewVehicle(_context.SelectedPrefab);
+                            _context.GuidToConfigMap[cfg.prefabGuid] = cfg;
                         }
+                        else
+                        {
+                            _context.SelectedPrefab = null;
+                            SetPreviewVehicle(null);
+                            _console?.LogWarning("Loaded config has no prefab GUID. Drop prefab in Info to sync deterministic ID.");
+                        }
+
+                        AssetDatabase.SaveAssets();
                         _context.NotifyConfigChanged(cfg);
                         _console?.LogSuccess($"Loaded vehicle: {cfg.id}");
                         UpdateTabButtons();
@@ -489,14 +569,14 @@ namespace UVS.Editor
         private void ShowHelp()
         {
             EditorUtility.DisplayDialog("Vehicle Editor Help",
-                "Vehicle Editor Help\n\n• New Vehicle\n• Load Vehicle\n• Tabs for modules\n• Preview: 3D view with gizmos\n• Console: logs and validation",
+                "Vehicle Editor Help\n\nâ€¢ New Vehicle\nâ€¢ Load Vehicle\nâ€¢ Tabs for modules\nâ€¢ Preview: 3D view with gizmos\nâ€¢ Console: logs and validation",
                 "OK");
         }
 
         public void SetPreviewVehicle(GameObject vehicle)
         {
-            Debug.Log($"[PREVIEW] SetPreviewVehicle called with: {(vehicle != null ? vehicle.name : "NULL")}");
             _previewManager.SetVehicle(vehicle);
+            UpdateSeatPreview();
             _previewContainer?.MarkDirtyRepaint();
         }
 
@@ -504,14 +584,13 @@ namespace UVS.Editor
 
         private void OnContextConfigChanged(VehicleConfig config)
         {
-            // Update tab visibility when config changes
             UpdateTabButtons();
+            UpdateSeatPreview();
 
-            // If active module is now hidden, switch to first visible one
             if (_activeModule != null && !_activeModule.CanActivateWithConfig(config))
             {
                 var firstVisible = _moduleRegistry?.Modules
-                    .FirstOrDefault(m => m.CanActivateWithConfig(config));
+                    .FirstOrDefault(m => CanShowModule(m, config));
 
                 if (firstVisible != null)
                 {
@@ -519,6 +598,33 @@ namespace UVS.Editor
                 }
             }
         }
-    }
 
+        private void UpdateSeatPreview()
+        {
+            if (_previewManager?.Current is not ISeatPreview seatPreview)
+                return;
+
+            seatPreview.SetSeatData(_context?.CurrentConfig, OnSeatChangedFromPreview);
+            seatPreview.SetTopDown(_topDownPreview);
+        }
+
+        private void OnSeatChangedFromPreview(int index, Vector3 localPosition, Vector3 localEuler)
+        {
+            if (_context?.CurrentConfig == null) return;
+            if (_context.CurrentConfig.seats == null) return;
+            if (index < 0 || index >= _context.CurrentConfig.seats.Count) return;
+
+            var seat = _context.CurrentConfig.seats[index];
+            seat.localPosition = localPosition;
+            seat.localEuler = localEuler;
+            EditorUtility.SetDirty(_context.CurrentConfig);
+            _previewContainer?.MarkDirtyRepaint();
+        }
+    }
 }
+
+
+
+
+
+

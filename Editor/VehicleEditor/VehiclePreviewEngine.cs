@@ -1,7 +1,10 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.Rendering;
-#if UNITY_URP
+#if UNITY_RENDER_PIPELINE_UNIVERSAL || UNITY_PIPELINE_URP || UNITY_URP
 using UnityEngine.Rendering.Universal;
+#endif
+#if UNITY_RENDER_PIPELINE_HIGH_DEFINITION || UNITY_PIPELINE_HDRP || UNITY_HDRP
+using UnityEngine.Rendering.HighDefinition;
 #endif
 
 namespace UVS.Editor.Core
@@ -12,13 +15,14 @@ namespace UVS.Editor.Core
         {
             Auto,
             BuiltIn,
-            URP
+            URP,
+            HDRP
         }
 
         private IVehiclePreview _current;
         private Mode _mode = Mode.Auto;
         private RenderPipelineAsset _lastPipeline;
-        private GameObject _currentVehicle; // Preserve vehicle across renderer switches
+        private GameObject _currentVehicle;
 
         public IVehiclePreview Current => _current;
         public Mode mode => _mode;
@@ -45,44 +49,76 @@ namespace UVS.Editor.Core
             }
         }
 
+        public bool IsModeSupported(Mode mode)
+        {
+            return mode switch
+            {
+                Mode.URP => IsUrpAvailable(),
+                Mode.HDRP => IsHdrpAvailable(),
+                _ => true
+            };
+        }
+
         private void Rebuild()
         {
             Cleanup();
 
+            var currentPipeline = GraphicsSettings.currentRenderPipeline;
             bool useURP = false;
+            bool useHDRP = false;
 
-#if UNITY_URP
-            useURP =
-                _mode == Mode.URP ||
-                (_mode == Mode.Auto && GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset);
+            if (_mode == Mode.Auto)
+            {
+#if UNITY_RENDER_PIPELINE_HIGH_DEFINITION || UNITY_PIPELINE_HDRP || UNITY_HDRP
+                useHDRP = currentPipeline is HDRenderPipelineAsset;
 #endif
-            // If URP is not installed, useURP stays false regardless of Mode setting.
-            // Mode.URP selected by the user but package missing → silently falls back to Built-in.
+#if UNITY_RENDER_PIPELINE_UNIVERSAL || UNITY_PIPELINE_URP || UNITY_URP
+                useURP = !useHDRP && currentPipeline is UniversalRenderPipelineAsset;
+#endif
+            }
+            else if (_mode == Mode.URP)
+            {
+                useURP = IsUrpAvailable();
+            }
+            else if (_mode == Mode.HDRP)
+            {
+                useHDRP = IsHdrpAvailable();
+            }
 
-#if UNITY_URP
-            _current = useURP
-                ? new VehiclePreview3D_URP()
-                : new VehiclePreview3D_Builtin();
+            if (useHDRP)
+            {
+#if UNITY_RENDER_PIPELINE_HIGH_DEFINITION || UNITY_PIPELINE_HDRP || UNITY_HDRP
+                _current = new VehiclePreview3D_HDRP();
 #else
-            _current = new VehiclePreview3D_Builtin();
+                _current = new VehiclePreview3D_Builtin();
 #endif
+            }
+            else if (useURP)
+            {
+#if UNITY_RENDER_PIPELINE_UNIVERSAL || UNITY_PIPELINE_URP || UNITY_URP
+                _current = new VehiclePreview3D_URP();
+#else
+                _current = new VehiclePreview3D_Builtin();
+#endif
+            }
+            else
+            {
+                _current = new VehiclePreview3D_Builtin();
+            }
 
-            _lastPipeline = GraphicsSettings.currentRenderPipeline;
+            _lastPipeline = currentPipeline;
 
-            UnityEngine.Debug.Log($"[PREVIEW] Rebuilt preview system: {(_current != null ? _current.GetType().Name : "NULL")} (Mode: {_mode}, URP: {useURP})");
+            UnityEngine.Debug.Log($"[PREVIEW] Rebuilt preview: {(_current != null ? _current.GetType().Name : "NULL")} (Mode: {_mode}, URP: {useURP}, HDRP: {useHDRP})");
 
-            // Reapply the vehicle to the new renderer
             if (_currentVehicle != null)
             {
                 _current?.SetVehicle(_currentVehicle);
-                UnityEngine.Debug.Log($"[PREVIEW] Reapplied vehicle '{_currentVehicle.name}' to new renderer");
             }
         }
 
         public void SetVehicle(GameObject prefab)
         {
-            _currentVehicle = prefab; // Cache for Rebuild
-            UnityEngine.Debug.Log($"[PREVIEW] SetVehicle called on manager, _current is {(_current != null ? "VALID" : "NULL")}");
+            _currentVehicle = prefab;
             _current?.SetVehicle(prefab);
         }
 
@@ -95,6 +131,24 @@ namespace UVS.Editor.Core
         {
             _current?.Cleanup();
             _current = null;
+        }
+
+        private bool IsUrpAvailable()
+        {
+#if UNITY_RENDER_PIPELINE_UNIVERSAL || UNITY_PIPELINE_URP || UNITY_URP
+            return true;
+#else
+            return false;
+#endif
+        }
+
+        private bool IsHdrpAvailable()
+        {
+#if UNITY_RENDER_PIPELINE_HIGH_DEFINITION || UNITY_PIPELINE_HDRP || UNITY_HDRP
+            return true;
+#else
+            return false;
+#endif
         }
     }
 }
